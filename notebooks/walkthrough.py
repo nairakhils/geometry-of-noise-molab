@@ -132,7 +132,16 @@ def _(REPO_ROOT, np):
     shrinkage = _load_npz("shrinkage_heatmap.npz")
     linear_fit = _load_npz("linear_score_fit.npz")
     singular_gradient = _load_npz("singular_gradient.npz")
-    return energy, gallery, linear_fit, shrinkage, singular_gradient, stability
+    grf_flow_strip = _load_npz("grf_flow_strip.npz")
+    return (
+        energy,
+        gallery,
+        grf_flow_strip,
+        linear_fit,
+        shrinkage,
+        singular_gradient,
+        stability,
+    )
 
 
 @app.cell
@@ -551,6 +560,66 @@ def _(n_s_dropdown, plt, shrinkage, t_slider):
     _ax2.set_title(f"slice at fixed k  (n_s = {_ns})")
     _ax2.legend(fontsize=8)
 
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### Forward corruption and exact reverse flow on one GRF
+
+    We take one clean GRF, draw one forward noise once, and run the exact
+    reverse flow on the corrupted field. No neural network is involved;
+    every reverse step is a closed-form scalar Wiener-style filter per
+    Fourier mode, with per-mode coefficient $c_k(t) = (\dot a\,a\,
+    \sigma_k^2 + \dot b\,b) / (a^2 \sigma_k^2 + b^2)$. The reverse-flow
+    row visibly approaches the clean field in the lowest-$t$ panel. This
+    is the autonomous-field generation process from the paper made fully
+    explicit on a substrate where it has a closed form.
+    """)
+    return
+
+
+@app.cell
+def _(grf_flow_strip, np, plt):
+    _clean = grf_flow_strip["clean_field"]
+    _fwd_t = grf_flow_strip["forward_t_values"]
+    _fwd = grf_flow_strip["forward_fields"]
+    _rev_t = grf_flow_strip["reverse_strip_t_values"]
+    _rev = grf_flow_strip["reverse_strip"]
+
+    _vmax = float(np.max(np.abs(_clean)))
+    _fig, _axes = plt.subplots(2, 4, figsize=(13, 6.4))
+
+    for _j in range(4):
+        _ax = _axes[0, _j]
+        _ax.imshow(_fwd[_j], cmap="RdBu_r", vmin=-_vmax, vmax=_vmax)
+        _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
+        _ax.set_title(f"forward, t = {float(_fwd_t[_j]):.3f}", fontsize=10)
+
+    # Bottom row: read right-to-left so the visual is "motion back toward t=0".
+    _rev_order = list(range(3, -1, -1))
+    for _col, _src in enumerate(_rev_order):
+        _ax = _axes[1, _col]
+        _ax.imshow(_rev[_src], cmap="RdBu_r", vmin=-_vmax, vmax=_vmax)
+        _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
+        _ax.set_title(f"reverse, t = {float(_rev_t[_src]):.3f}", fontsize=10)
+
+    _axes[0, 0].set_ylabel("forward", fontsize=11)
+    _axes[1, 0].set_ylabel("reverse", fontsize=11)
+    _fig.suptitle(
+        "One clean GRF, one forward noise draw, exact closed-form reverse flow",
+        y=1.00, fontsize=12,
+    )
+    _fig.text(
+        0.5, -0.01,
+        "Top row: U_t = a(t) X + b(t) eps with the same eps shared across t. "
+        "Bottom row: exact reverse flow from the t=0.8 corrupted field, sampled "
+        "at the same four t values and read right-to-left.",
+        ha="center", fontsize=8.5, style="italic",
+    )
     _fig.tight_layout()
     _fig
     return

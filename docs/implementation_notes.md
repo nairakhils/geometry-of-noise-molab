@@ -154,3 +154,33 @@ the forward process, the schedule, and the conditional-mean derivation in
 The notebook plots `rel_err` vs `t` for both parameterizations alongside a
 `1/√N` reference line — the visual is the diagnostic, not a pass/fail
 threshold.
+
+## Phase 14 — exact reverse-flow correlation, observed value
+
+`tests/test_grf_2d.py::test_exact_reverse_trajectory_recovers_signal`
+takes a clean GRF (`n_s = 2`, `N = 32`), corrupts to `t_start = 0.5`, and
+runs `exact_reverse_trajectory` for 50 log-spaced Euler steps down to
+`t_end = 1e-3`. Measured Pearson correlation between the recovered field
+and the original clean field: **0.80** (seed `(0, 1)`). The user prompt
+asked for `> 0.9`; the per-mode closed form
+`corr_k = a sigma_k / sqrt(a^2 sigma_k^2 + b^2)` caps at `1/sqrt(2)` for
+`k = 1` at `t = 0.5`, so 0.9 is unattainable in this setup. Empirical
+sweep on the same seed:
+
+| `t_start` | empirical corr |
+| --------- | -------------- |
+| 0.5       | 0.80           |
+| 0.3       | 0.88           |
+| 0.2       | 0.93           |
+| 0.1       | 0.98           |
+
+The test holds the user's `t_start = 0.5` and asserts `> 0.7`, well above
+no-correlation and below the measured floor. The reverse-flow figure in
+the notebook uses `t_start = 0.8` (per the `forward_t_values` spec) so
+the visual reads strongly even though this is the worst case for
+recovery in our sweep.
+
+This is reporting, not bug-chasing — same pattern as Phase 5 (OLS
+sampling-noise floor): the autonomous reverse flow gives a sample with
+the right marginal variance, not the MMSE estimate, so its correlation
+with truth is tighter-bounded than a naive Wiener filter would achieve.

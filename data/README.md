@@ -44,6 +44,17 @@ For each n_s in {1, 2, 3}:
 - `theoretical_psd_ns{1,2,3}`      (n_bins,)     k^(-n_s), rescaled to overlay
 - `psd_centers_ns{1,2,3}`          (n_bins,)     log-spaced bin centers
 
+## grf_flow_strip.npz   (n_s = 2, N = 32, seed = 3)
+- `clean_field`                    (32, 32)    one GRF sample
+- `forward_t_values`               (4,)        [0.05, 0.2, 0.5, 0.8]
+- `forward_fields`                 (4, 32, 32) corruptions of `clean_field`,
+                                                shared eps draw across t values
+- `reverse_t_values`               (51,)       log-spaced from 0.8 down to 1e-3
+- `reverse_trajectory`             (51, 32, 32)  exact-flow fields
+- `reverse_strip_t_values`         (4,)        sub-sampled t indices matching forward
+- `reverse_strip`                  (4, 32, 32) trajectory frames at those indices
+- `n_s`, `N`, `n_steps`            metadata
+
 ## shrinkage_heatmap.npz   (N = 64)
 - `t_values`                       (20,)        log-spaced [1e-3, ~1]
 - `radial_centers`                 (31,)        k-bin centers (linear width 1)

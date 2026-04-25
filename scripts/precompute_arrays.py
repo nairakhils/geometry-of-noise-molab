@@ -26,8 +26,11 @@ from src.exact_affine import (
     posterior_t_given_u,
 )
 from src.grf_2d import (
+    build_grf_covariance_diag,
     build_k_grid,
+    exact_reverse_trajectory,
     exact_shrinkage_per_mode,
+    forward_corrupt,
     half_power_cutoff,
     measure_psd_radial,
     sample_grf_batch,
@@ -233,6 +236,67 @@ def precompute_singular_gradient() -> None:
     _report("singular_gradient", t0, payload)
 
 
+def precompute_grf_flow_strip(rng: np.random.Generator) -> None:
+    """One clean GRF; one shared eps draw used at four forward t values; an
+    exact reverse trajectory from t=0.8 down to t=1e-3 with 50 log-spaced
+    Euler steps; a per-t subsample of the trajectory matching the four
+    forward t values for the bottom row of the figure strip.
+
+    We rescale sigma_k^2 by K = N^2 / sum(k^{-n_s}) so the GRF has unit real-
+    space variance in expectation AND per-mode |fft(x)(k)|^2 / N^2 = K * k^{-n_s}.
+    The same rescaled sigma_k^2 is passed into exact_reverse_trajectory so the
+    autonomous reverse flow uses the same per-mode signal variance the field
+    actually has. With this, signal and noise (eps_real ~ N(0, I)) are on the
+    same scale and the forward / reverse demo is visually meaningful.
+    """
+    t0 = time.time()
+    N = 32
+    n_s = 2.0
+    forward_t = np.array([0.05, 0.2, 0.5, 0.8])
+    n_steps = 50
+
+    # rescaled per-mode signal variance so the GRF has unit real-space variance
+    sigma2_raw = build_grf_covariance_diag(N, n_s)
+    K_scale = (N * N) / sigma2_raw.sum()
+    sigma2 = K_scale * sigma2_raw
+
+    # generate clean GRF directly with the rescaled per-mode variance
+    white = rng.standard_normal((N, N))
+    F = np.fft.fft2(white) * np.sqrt(sigma2)
+    clean = np.fft.ifft2(F).real
+
+    eps_real = np.random.default_rng(SEED + 100).standard_normal((N, N))
+    forward_fields = np.stack(
+        [forward_corrupt(clean, t=float(t), eps_real=eps_real) for t in forward_t],
+        axis=0,
+    )
+
+    t_traj, traj = exact_reverse_trajectory(
+        forward_fields[-1], t_start=float(forward_t[-1]), t_end=1e-3,
+        n_steps=n_steps, n_s=n_s, sigma2=sigma2,
+    )
+
+    # Pull the trajectory frames whose t most closely match forward_t.
+    idx = np.array([int(np.argmin(np.abs(t_traj - float(t)))) for t in forward_t])
+    reverse_strip_t = t_traj[idx]
+    reverse_strip = traj[idx]
+
+    payload = dict(
+        clean_field=clean.astype(np.float32),
+        forward_t_values=forward_t,
+        forward_fields=forward_fields.astype(np.float32),
+        reverse_t_values=t_traj,
+        reverse_trajectory=traj.astype(np.float32),
+        reverse_strip_t_values=reverse_strip_t,
+        reverse_strip=reverse_strip.astype(np.float32),
+        n_s=np.asarray(n_s),
+        N=np.asarray(N),
+        n_steps=np.asarray(n_steps),
+    )
+    np.savez(DATA_DIR / "grf_flow_strip.npz", **payload)
+    _report("grf_flow_strip", t0, payload)
+
+
 def precompute_shrinkage_heatmap() -> None:
     t0 = time.time()
     N = 64
@@ -330,6 +394,17 @@ For each n_s in {1, 2, 3}:
 - `theoretical_psd_ns{1,2,3}`      (n_bins,)     k^(-n_s), rescaled to overlay
 - `psd_centers_ns{1,2,3}`          (n_bins,)     log-spaced bin centers
 
+## grf_flow_strip.npz   (n_s = 2, N = 32, seed = 3)
+- `clean_field`                    (32, 32)    one GRF sample
+- `forward_t_values`               (4,)        [0.05, 0.2, 0.5, 0.8]
+- `forward_fields`                 (4, 32, 32) corruptions of `clean_field`,
+                                                shared eps draw across t values
+- `reverse_t_values`               (51,)       log-spaced from 0.8 down to 1e-3
+- `reverse_trajectory`             (51, 32, 32)  exact-flow fields
+- `reverse_strip_t_values`         (4,)        sub-sampled t indices matching forward
+- `reverse_strip`                  (4, 32, 32) trajectory frames at those indices
+- `n_s`, `N`, `n_steps`            metadata
+
 ## shrinkage_heatmap.npz   (N = 64)
 - `t_values`                       (20,)        log-spaced [1e-3, ~1]
 - `radial_centers`                 (31,)        k-bin centers (linear width 1)
@@ -361,6 +436,7 @@ def main() -> None:
     precompute_energy_landscape()
     precompute_stability_curves(np.random.default_rng(SEED + 1))
     precompute_grf_gallery(np.random.default_rng(SEED + 2))
+    precompute_grf_flow_strip(np.random.default_rng(SEED + 3))
     precompute_shrinkage_heatmap()
     write_data_readme()
 
