@@ -15,10 +15,10 @@ is Gaussian and the linear map is just the differentiated forward process).
 On the FM linear schedule (a_dot=-1, b_dot=1) this simplifies to
 A_v = (b I - a Sigma) M^{-1} = (t I - (1-t) Sigma) M^{-1}.
 
-If the forward process, the schedule, and the conditional-mean derivation in
-src/exact_affine.py all agree with each other, OLS on enough (u, target)
-pairs converges to A_exact up to sampling noise of order 1/sqrt(N). This
-script records the empirical agreement.
+This script sweeps the sample size N across {1e3, 1e4, 1e5, 1e6}. The
+relative Frobenius error of the OLS estimate vs the closed form is
+expected to scale as 1/sqrt(N) per Gaussian linear-regression theory, so
+each decade in N should shift the curve by sqrt(10) on a semilog plot.
 """
 
 from __future__ import annotations
@@ -41,7 +41,8 @@ DATA_DIR.mkdir(exist_ok=True)
 SEED = 0
 SIGMA_2D = np.diag([2.0, 0.5])
 T_VALUES = np.linspace(0.05, 0.95, 10)
-N_SAMPLES = 200_000
+N_SAMPLES_LIST = [1_000, 10_000, 100_000, 1_000_000]
+RUNTIME_BUDGET_S = 90.0
 
 
 def exact_A_eps(t: float, Sigma: np.ndarray) -> np.ndarray:
@@ -82,48 +83,59 @@ def fit_one(
     return coef_eps.T, coef_v.T
 
 
-def main() -> None:
-    t0 = time.time()
-    rng = np.random.default_rng(SEED)
-    d = SIGMA_2D.shape[0]
+def _sweep_one_N(N: int, Sigma: np.ndarray, rng: np.random.Generator):
+    """Return (rel_err_eps[t], rel_err_v[t]) at sample size N."""
     n_t = len(T_VALUES)
-
-    A_learned_eps = np.empty((n_t, d, d))
-    A_exact_eps = np.empty_like(A_learned_eps)
-    A_learned_v = np.empty_like(A_learned_eps)
-    A_exact_v = np.empty_like(A_learned_eps)
-
+    d = Sigma.shape[0]
+    rel_eps = np.empty(n_t)
+    rel_v = np.empty(n_t)
     for i, t in enumerate(T_VALUES):
-        A_le, A_lv = fit_one(t, SIGMA_2D, N_SAMPLES, rng)
-        A_learned_eps[i] = A_le
-        A_learned_v[i] = A_lv
-        A_exact_eps[i] = exact_A_eps(t, SIGMA_2D)
-        A_exact_v[i] = exact_A_v(t, SIGMA_2D)
+        A_le, A_lv = fit_one(t, Sigma, N, rng)
+        A_ee = exact_A_eps(t, Sigma)
+        A_ev = exact_A_v(t, Sigma)
+        rel_eps[i] = np.linalg.norm(A_le - A_ee) / max(np.linalg.norm(A_ee), 1e-12)
+        rel_v[i] = np.linalg.norm(A_lv - A_ev) / max(np.linalg.norm(A_ev), 1e-12)
+    return rel_eps, rel_v
 
-    rel_err_eps = np.linalg.norm(A_learned_eps - A_exact_eps, axis=(1, 2)) / np.maximum(
-        np.linalg.norm(A_exact_eps, axis=(1, 2)), 1e-12
-    )
-    rel_err_v = np.linalg.norm(A_learned_v - A_exact_v, axis=(1, 2)) / np.maximum(
-        np.linalg.norm(A_exact_v, axis=(1, 2)), 1e-12
-    )
 
+def main() -> None:
+    t_total = time.time()
+    rng = np.random.default_rng(SEED)
+    n_t = len(T_VALUES)
+    n_list = list(N_SAMPLES_LIST)
+
+    rel_err_eps_grid = np.empty((len(n_list), n_t))
+    rel_err_v_grid = np.empty((len(n_list), n_t))
+    per_N_runtime = np.empty(len(n_list))
+
+    used_n = []
+    for j, N in enumerate(n_list):
+        t_n = time.time()
+        if time.time() - t_total + 1.5 * (per_N_runtime[j - 1] if j > 0 else 0.0) > RUNTIME_BUDGET_S:
+            print(f"[linear_score_fit     ] dropping N={N} to stay under {RUNTIME_BUDGET_S:.0f}s budget")
+            break
+        rel_e, rel_v = _sweep_one_N(N, SIGMA_2D, rng)
+        rel_err_eps_grid[j] = rel_e
+        rel_err_v_grid[j] = rel_v
+        per_N_runtime[j] = time.time() - t_n
+        used_n.append(N)
+        print(
+            f"  N={N:>9d}   {per_N_runtime[j]:5.2f}s   "
+            f"eps median={np.median(rel_e):.2e}   v median={np.median(rel_v):.2e}"
+        )
+
+    used_n_arr = np.asarray(used_n, dtype=np.int64)
     payload = dict(
         t_values=T_VALUES,
-        A_learned_eps=A_learned_eps,
-        A_exact_eps=A_exact_eps,
-        A_learned_v=A_learned_v,
-        A_exact_v=A_exact_v,
-        rel_err_eps=rel_err_eps,
-        rel_err_v=rel_err_v,
-        n_samples=np.asarray(N_SAMPLES),
+        n_samples_list=used_n_arr,
+        rel_err_eps_grid=rel_err_eps_grid[: len(used_n)],
+        rel_err_v_grid=rel_err_v_grid[: len(used_n)],
     )
     np.savez(DATA_DIR / "linear_score_fit.npz", **payload)
 
-    elapsed = time.time() - t0
+    elapsed = time.time() - t_total
     size_mb = sum(np.asarray(v).nbytes for v in payload.values()) / 1e6
-    print(f"[linear_score_fit     ] {elapsed:6.2f}s   {size_mb:7.3f} MB   N={N_SAMPLES} per t")
-    print(f"  eps rel err   min={rel_err_eps.min():.2e}   median={np.median(rel_err_eps):.2e}   max={rel_err_eps.max():.2e}")
-    print(f"  v   rel err   min={rel_err_v.min():.2e}   median={np.median(rel_err_v):.2e}   max={rel_err_v.max():.2e}")
+    print(f"[linear_score_fit     ] {elapsed:6.2f}s   {size_mb:7.3f} MB   N sweep over {used_n}")
 
 
 if __name__ == "__main__":

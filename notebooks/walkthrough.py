@@ -393,14 +393,15 @@ def _(mo):
     where the velocity target is $v = \dot u = \dot a(t)\,x + \dot b(t)\,
     \epsilon$ (paper Eq. 61). On the FM linear schedule
     $(\dot a, \dot b) = (-1, 1)$, so $A_v(t) = (b(t)\,I - a(t)\,\Sigma)\,
-    M(t)^{-1}$. With $N = 2 \times 10^5$ samples per $t$, the relative
-    Frobenius error tracks the OLS sampling-noise floor $\sim 1/\sqrt{N}$
-    rather than reaching machine precision. That decay rate is the
-    diagnostic: it confirms that the forward process, the schedule, the
-    schedule derivatives, and the conditional-mean derivation in
-    `src/exact_affine.py` agree with each other. No neural network is
-    fitted; OLS on a closed-form linear estimator is the only learning step
-    in this notebook. The full numerics are recorded in
+    M(t)^{-1}$. We sweep $N \in \{10^3, 10^4, 10^5, 10^6\}$ and plot the
+    relative Frobenius error per $t$ for each. The error scales as
+    $1/\sqrt{N}$ as Gaussian linear-regression theory predicts, so each
+    decade in $N$ shifts the curve by $\sqrt{10}$ on a semilog plot.
+    The vertical ladder is the diagnostic: it confirms that the forward
+    process, the schedule, the schedule derivatives, and the conditional-
+    mean derivation in `src/exact_affine.py` are mutually consistent. No
+    neural network is fitted; OLS on a closed-form linear estimator is the
+    only learning step in this notebook. The full numerics are recorded in
     `docs/implementation_notes.md`.
     """)
     return
@@ -409,16 +410,31 @@ def _(mo):
 @app.cell
 def _(linear_fit, plt):
     _t = linear_fit["t_values"]
-    _n = int(linear_fit["n_samples"])
-    _fig, _ax = plt.subplots(figsize=(7.5, 4.4))
-    _ax.semilogy(_t, linear_fit["rel_err_eps"], "o-", label="noise pred (eps)")
-    _ax.semilogy(_t, linear_fit["rel_err_v"], "s-", label="velocity pred (v)")
-    _ax.axhline(_n ** -0.5, color="grey", ls=":", alpha=0.6,
-                label=f"1/sqrt(N) ~ {_n**-0.5:.1e}")
+    _Ns = linear_fit["n_samples_list"]
+    _eps_grid = linear_fit["rel_err_eps_grid"]
+    _v_grid = linear_fit["rel_err_v_grid"]
+
+    _fig, _ax = plt.subplots(figsize=(8.5, 5.2))
+    _cmap = plt.get_cmap("viridis")
+    for _j, _N in enumerate(_Ns):
+        _color = _cmap(_j / max(len(_Ns) - 1, 1))
+        _ax.semilogy(_t, _eps_grid[_j], "o-", color=_color, linewidth=1.6,
+                     label=f"eps, N = {int(_N):>7d}")
+        _ax.semilogy(_t, _v_grid[_j], "s--", color=_color, linewidth=1.2,
+                     alpha=0.85, label=f"v,   N = {int(_N):>7d}")
+        _ax.axhline(float(_N) ** -0.5, color=_color, ls=":", alpha=0.55, linewidth=0.9)
+
     _ax.set_xlabel("t")
-    _ax.set_ylabel("Frobenius rel err  ||A_OLS - A_exact|| / ||A_exact||")
-    _ax.set_title(f"linear OLS vs closed-form Wiener  (N = {_n} samples per t)")
-    _ax.legend()
+    _ax.set_ylabel(r"$\|A_{\mathrm{OLS}} - A_{\mathrm{exact}}\|_F / \|A_{\mathrm{exact}}\|_F$")
+    _ax.set_title("OLS recovery of the closed-form Wiener matrix vs N")
+    _ax.legend(ncol=2, fontsize=8, loc="upper right")
+    _fig.text(
+        0.5, -0.02,
+        "Each decade in N shifts the error floor by a factor of ~sqrt(10). "
+        "The vertical ladder is the diagnostic, not any single number. "
+        "Dotted horizontal lines mark 1/sqrt(N) per N.",
+        ha="center", fontsize=8.5, style="italic",
+    )
     _fig.tight_layout()
     _fig
     return
