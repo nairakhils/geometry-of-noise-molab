@@ -28,51 +28,92 @@ def _(mo):
     mo.md(r"""
     The marginal energy $E_{\text{marg}}(u) = -\log \int p(u\mid t)\,p(t)\,dt$
     has a $1/b(t)^2$ singularity at every clean data point, so the raw
-    gradient diverges as the noise level shrinks. The figure below evaluates
-    that integrand on four discrete data points $\{(\pm 1, \pm 1)\}$ at
-    five fixed probes: the raw norm tracks the $1/b^2$ envelope, while the
-    paper's conformal factor $\lambda(t) = b + b^2/a$ trims the divergence.
-    The original-claim part of this notebook is a Fourier-mode shrinkage
-    picture for isotropic Gaussian random fields, presented later.
+    gradient diverges as the noise level shrinks. The figure below shows
+    the three-panel "diverges, vanishes, bounded" structure on four
+    discrete data points $\{(\pm 1, \pm 1)\}$ at five fixed probes: the
+    raw integrand norm tracks the $1/b^2$ envelope (panel 1), the paper's
+    conformal factor $\lambda(t)^2$ vanishes at the matching $b^2$ rate
+    (panel 2), and their product stays bounded over the divergent regime
+    (panel 3). The original-claim part of this notebook is a Fourier-mode
+    shrinkage picture for isotropic Gaussian random fields, presented later.
     """)
     return
 
 
 @app.cell
-def _(plt, singular_gradient):
+def _(np, plt, singular_gradient):
     _t = singular_gradient["t_axis"]
-    _raw = singular_gradient["raw_norm"]
-    _pre = singular_gradient["preconditioned_norm"]
-    _env = singular_gradient["envelope_inv_b_squared"]
+    _raw = singular_gradient["raw_grad_norm"]
+    _lam = singular_gradient["lambda_bar_curves"]
+    _pre = singular_gradient["preconditioned_grad_norm"]
+    _env_inv = singular_gradient["envelope_inv_b_squared"]
+    _env_b2 = singular_gradient["envelope_b_squared"]
     _labels = list(singular_gradient["probe_labels"])
 
-    _fig, _axes = plt.subplots(1, 2, figsize=(13, 4.6), sharex=True)
+    # Slope of the bounded curve over the divergent regime
+    # (t in [b > sqrt(jitter), 0.5]; below sqrt(jitter)=0.01 the integrand
+    # saturates at the jitter floor and the slope is uninformative).
+    _fit_mask = (_t >= 0.01) & (_t <= 0.5)
+    _slopes = []
+    for _i in range(len(_labels)):
+        _y = _pre[_i][_fit_mask]
+        if (_y > 0).all() and len(_y) > 2:
+            _slopes.append(float(np.polyfit(np.log(_t[_fit_mask]), np.log(_y), 1)[0]))
+        else:
+            _slopes.append(float("nan"))
 
+    _fig, _axes = plt.subplots(1, 3, figsize=(15, 4.4), sharex=True)
+
+    # Panel 1: raw per-t integrand of grad E_marg, with 1/b^2 envelope.
     for _i, _lab in enumerate(_labels):
         _y = _raw[_i]
         _mask = _y > 0
         _axes[0].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.4)
-    _axes[0].loglog(_t, _env, "k--", alpha=0.55, linewidth=1.0,
+    _axes[0].loglog(_t, _env_inv, "k--", alpha=0.55, linewidth=1.0,
                     label=r"$1 / b(t)^2$ envelope")
-    _axes[0].set_xlabel("t"); _axes[0].set_ylabel(r"$\|(u - a\,D_t^*) / \sigma^2\|$")
-    _axes[0].set_title("raw integrand of grad E_marg")
-    _axes[0].legend(fontsize=8, loc="upper right")
+    _axes[0].set_xlabel("t")
+    _axes[0].set_ylabel(r"$\|(u - a D_t^*) / \sigma^2\|$")
+    _axes[0].set_title("(1) raw: diverges as $1/b^2$")
+    _axes[0].legend(fontsize=7, loc="upper right")
 
+    # Panel 2: lambda(t)^2 vs t, with b^2 envelope.
+    # Same curve for every probe (no probe dependence in lambda(t)),
+    # so a single line covers all.
+    _axes[1].loglog(_t, _lam[0], color="C3", linewidth=1.6,
+                    label=r"$\lambda(t)^2 = (b + b^2/a)^2$")
+    _axes[1].loglog(_t, _env_b2, "k--", alpha=0.55, linewidth=1.0,
+                    label=r"$b(t)^2$ envelope")
+    _axes[1].set_xlabel("t")
+    _axes[1].set_ylabel(r"$\bar\lambda$ proxy")
+    _axes[1].set_title(r"(2) $\lambda(t)^2$: vanishes as $b^2$")
+    _axes[1].legend(fontsize=7, loc="upper left")
+
+    # Panel 3: bounded product, with measured slope per probe in legend.
     for _i, _lab in enumerate(_labels):
         _y = _pre[_i]
         _mask = _y > 0
-        _axes[1].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.4)
-    _axes[1].set_xlabel("t"); _axes[1].set_ylabel(r"$|\lambda(t)| \cdot \|(u - a\,D_t^*) / \sigma^2\|$")
-    _axes[1].set_title("preconditioned by conformal factor")
-    _axes[1].legend(fontsize=8, loc="upper right")
+        _slope_str = ("flat" if abs(_slopes[_i]) < 0.05
+                      else f"slope {_slopes[_i]:+.2f}") if not np.isnan(_slopes[_i]) else "n/a"
+        _axes[2].loglog(_t[_mask], _y[_mask], linewidth=1.4,
+                        label=f"{_lab}  ({_slope_str})")
+    _axes[2].set_xlabel("t")
+    _axes[2].set_ylabel(r"$\lambda(t)^2 \cdot \|\nabla\,\mathrm{integrand}\|$")
+    _axes[2].set_title("(3) bounded product  $\\approx$  flat over $t \\in [0.01, 0.5]$")
+    _axes[2].legend(fontsize=7, loc="upper right")
 
-    _fig.suptitle("Singular gradient (left) and its conformal cancellation (right)",
-                  y=1.02, fontsize=12)
-    _fig.text(0.5, -0.02,
-              "4 discrete data points at the corners of [-1, 1]^2, jitter = 1e-4."
-              "  Raw integrand diverges as 1 / b(t)^2 near each datum;"
-              "  preconditioning by lambda(t) = b + b^2/a removes one order of t.",
-              ha="center", fontsize=8.5, style="italic")
+    _fig.suptitle(
+        "Singular gradient (1) and its conformal cancellation (2 → 3)",
+        y=1.02, fontsize=12,
+    )
+    _fig.text(
+        0.5, -0.02,
+        "Panel 1 diverges as 1 / b(t)^2; panel 2 vanishes at the same rate "
+        "(lambda^2 ~ b^2); panel 3 is the bounded product. Slope annotations "
+        "in panel 3 are log-log fits over t in [0.01, 0.5]; values near zero "
+        "confirm the cancellation. The curves bend up at t -> 1 because "
+        "lambda(t) = b + b^2/a inherits the FM singularity at a = 0.",
+        ha="center", fontsize=8.5, style="italic",
+    )
     _fig.tight_layout()
     _fig
     return

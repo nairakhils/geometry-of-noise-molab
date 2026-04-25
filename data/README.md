@@ -10,10 +10,13 @@ Precomputed arrays for `notebooks/walkthrough.py`. All files are produced by
 - `u_probe`                        (5, 2)      probe points (at center, between two,
                                                 center of square, outside edge, far)
 - `probe_labels`                   (5,) U      human-readable labels for each probe
-- `raw_norm`                       (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
-- `preconditioned_norm`            (5, 100)    | lambda(t) | times raw_norm
+- `raw_grad_norm`                  (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
+- `lambda_bar_curves`              (5, 100)    lambda(t)^2 broadcast across probes
+- `preconditioned_grad_norm`       (5, 100)    lambda_bar_curves * raw_grad_norm  (bounded)
 - `envelope_inv_b_squared`         (100,)      1 / b(t)^2 reference curve
-- `lambda_t`                       (100,)      conformal factor lambda(t) (paper Eq. 15)
+- `envelope_b_squared`             (100,)      b(t)^2 reference curve
+- `lambda_t`                       (100,)      conformal factor lambda(t) = b + b^2/a (paper Eq. 15)
+- `raw_norm`, `preconditioned_norm`             backward-compatible aliases
 
 ## energy_landscape_2d.npz   (Sigma = diag([2.0, 0.5]))
 - `u_grid`                     (120, 120, 2)  query points on [-3, 3]^2

@@ -217,9 +217,18 @@ def precompute_singular_gradient() -> None:
     # For each (probe, t) we get D shape (P, T, d).
     D = denoiser_discrete(u_probe, t_axis, centers, jitter)       # (P, T, d)
     integrand = (u_probe[:, None, :] - a_vals[None, :, None] * D) / sigma2[None, :, None]
-    raw_norm = np.linalg.norm(integrand, axis=-1)                # (P, T)
-    preconditioned_norm = np.abs(lam_t)[None, :] * raw_norm
-    envelope = 1.0 / (b_vals * b_vals)                           # 1/b^2 reference
+    raw_grad_norm = np.linalg.norm(integrand, axis=-1)            # (P, T)
+
+    # Per-t conformal factor squared: lambda(t)^2 = (b + b^2/a)^2.
+    # Near small t lambda ~ b so lambda^2 ~ b^2, the rate that exactly cancels
+    # the 1/b^2 of raw_grad_norm. Broadcast to (P, T) for shape consistency
+    # with the other curves; the value is the same for every probe.
+    P = u_probe.shape[0]
+    lambda_bar_curves = np.broadcast_to((lam_t * lam_t)[None, :], (P, len(t_axis))).copy()
+    preconditioned_grad_norm = lambda_bar_curves * raw_grad_norm   # (P, T)
+
+    envelope_inv_b_squared = 1.0 / (b_vals * b_vals)
+    envelope_b_squared = b_vals * b_vals
 
     payload = dict(
         centers=centers,
@@ -227,10 +236,15 @@ def precompute_singular_gradient() -> None:
         t_axis=t_axis,
         u_probe=u_probe,
         probe_labels=probe_labels,
-        raw_norm=raw_norm,
-        preconditioned_norm=preconditioned_norm,
-        envelope_inv_b_squared=envelope,
+        raw_grad_norm=raw_grad_norm,
+        lambda_bar_curves=lambda_bar_curves,
+        preconditioned_grad_norm=preconditioned_grad_norm,
+        envelope_inv_b_squared=envelope_inv_b_squared,
+        envelope_b_squared=envelope_b_squared,
         lambda_t=lam_t,
+        # Backward-compatible aliases used by the Phase 9 figure cell:
+        raw_norm=raw_grad_norm,
+        preconditioned_norm=np.abs(lam_t)[None, :] * raw_grad_norm,
     )
     np.savez(DATA_DIR / "singular_gradient.npz", **payload)
     _report("singular_gradient", t0, payload)
@@ -369,10 +383,13 @@ Precomputed arrays for `notebooks/walkthrough.py`. All files are produced by
 - `u_probe`                        (5, 2)      probe points (at center, between two,
                                                 center of square, outside edge, far)
 - `probe_labels`                   (5,) U      human-readable labels for each probe
-- `raw_norm`                       (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
-- `preconditioned_norm`            (5, 100)    | lambda(t) | times raw_norm
+- `raw_grad_norm`                  (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
+- `lambda_bar_curves`              (5, 100)    lambda(t)^2 broadcast across probes
+- `preconditioned_grad_norm`       (5, 100)    lambda_bar_curves * raw_grad_norm  (bounded)
 - `envelope_inv_b_squared`         (100,)      1 / b(t)^2 reference curve
-- `lambda_t`                       (100,)      conformal factor lambda(t) (paper Eq. 15)
+- `envelope_b_squared`             (100,)      b(t)^2 reference curve
+- `lambda_t`                       (100,)      conformal factor lambda(t) = b + b^2/a (paper Eq. 15)
+- `raw_norm`, `preconditioned_norm`             backward-compatible aliases
 
 ## energy_landscape_2d.npz   (Sigma = diag([2.0, 0.5]))
 - `u_grid`                     (120, 120, 2)  query points on [-3, 3]^2
