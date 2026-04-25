@@ -46,10 +46,22 @@ python scripts/reproduce.py
 ```
 
 This regenerates every `.npz`, runs the test suite, and writes
-`data/manifest.json`. The committed `manifest.json` is the reference;
-your regenerated file should match byte-for-byte if the fixed seeds in
-the precompute scripts have not been touched. CI runs the same command
-on every push and asserts the manifest is unchanged.
+`data/manifest.json`. The committed `manifest.json` is the reference,
+generated on the CI runner (Linux, Python 3.11, OpenBLAS); CI re-runs
+the same command on every push and asserts the manifest is unchanged.
+
+**Cross-platform note.** Three of the seven files
+(`energy_landscape_2d.npz`, `grf_flow_strip.npz`, `shrinkage_heatmap.npz`)
+hash identically on macOS and Linux. The remaining four
+(`grf_gallery.npz`, `linear_score_fit.npz`, `singular_gradient.npz`,
+`stability_curves.npz`) have BLAS / LAPACK / FFT-routine differences
+that produce small floating-point variations across platforms; their
+SHA-256 prefixes will drift between Apple Accelerate and OpenBLAS even
+with identical seeds. The numerical content is consistent (medians and
+empirical statistics match to printed precision); only the bytes
+differ. The committed manifest tracks the Linux build; macOS users
+running `reproduce.py` will see drift in the four sensitive files but
+identical figures and test results.
 
 ## Layout
 

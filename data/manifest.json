@@ -1,9 +1,9 @@
 {
   "energy_landscape_2d.npz": "ffb8d411deb30f83",
   "grf_flow_strip.npz": "981e4e9a9364248f",
-  "grf_gallery.npz": "0db0eed7fc868de8",
-  "linear_score_fit.npz": "3765b38232117fa2",
+  "grf_gallery.npz": "0cd3a8a3be05e72d",
+  "linear_score_fit.npz": "fd77a3a0c4ea3748",
   "shrinkage_heatmap.npz": "4cba0224ed4a7517",
-  "singular_gradient.npz": "30cb609afde6e48d",
-  "stability_curves.npz": "573ed0c4ffd24c7d"
+  "singular_gradient.npz": "4bd583863448e608",
+  "stability_curves.npz": "45e9c5470e95a1ec"
 }
