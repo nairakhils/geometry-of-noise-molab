@@ -8,37 +8,47 @@ app = marimo.App(width="medium")
 def _(mo):
     mo.md(r"""
     # Singular gradients, conformal flows, and Fourier shrinkage
+    ## A closed-form reading of arXiv:2602.18428
 
-    *A closed-form reading of arXiv:2602.18428.*
+    Akhil Nair ·  · April 2026
+
+    *alphaXiv × marimo notebook competition submission*
     """)
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    April 2026  ·  alphaXiv x marimo competition submission
-    """)
+    mo.callout(
+        mo.md(
+            "**Static preview.** Figures below render from a precomputed "
+            "session. Click *Run on molab* (or open the /wasm preview) to "
+            "make the sliders, dropdowns, and the 2-D probe widget live."
+        ),
+        kind="info",
+    )
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    The marginal energy $E_{\text{marg}}(u) = -\log \int p(u\mid t)\,p(t)\,dt$
-    has a $1/b(t)^2$ singularity at every clean data point, so the raw
-    gradient diverges as the noise level shrinks. The figure below shows
-    the three-panel "diverges, vanishes, bounded" structure on four
-    discrete data points $\{(\pm 1, \pm 1)\}$ at five fixed probes: the
-    raw integrand norm tracks the $1/b^2$ envelope (panel 1), the paper's
-    conformal factor $\lambda(t)^2$ vanishes at the matching $b^2$ rate
-    (panel 2), and their product stays bounded over the divergent regime
-    (panel 3). A 2D-slider widget below the TLDR adds a live red overlay:
-    click anywhere on the $(u_1, u_2)$ plane and the red curve recomputes
-    in closed form on every click. The original-claim part of this
-    notebook is a Fourier-mode shrinkage picture for isotropic Gaussian
-    random fields, presented later.
-    """)
+    mo.callout(
+        mo.md(
+            "**TLDR.** The marginal energy "
+            "$E_{\\text{marg}}(u) = -\\log \\int p(u\\mid t)\\,p(t)\\,dt$ "
+            "has a $1/b(t)^2$ singularity at every clean datum, but the "
+            "paper's posterior-averaged conformal factor "
+            "$\\bar\\lambda(u)$ vanishes at the matching $b(t)^2$ rate. "
+            "The lead figure shows the **diverges, vanishes, bounded** "
+            "structure on four discrete data points and lets you click "
+            "anywhere on the $(u_1, u_2)$ plane to recompute the red "
+            "overlay live. The notebook's original contribution is a "
+            "Fourier-mode shrinkage extension on isotropic 2-D Gaussian "
+            "random fields, including the closed-form half-power cutoff "
+            "$k_c(t, n_s) = (a/b)^{2/n_s}$ that the paper does not draw."
+        ),
+        kind="neutral",
+    )
     return
 
 
@@ -53,15 +63,7 @@ def _(TwoDSliderWidget, mo, singular_gradient):
         start=0, stop=_n_t - 1, step=1, value=int(_n_t * 0.4),
         label="t marker index",
     )
-    mo.vstack([
-        mo.md(
-            "**Live probe.** Click anywhere on the plane below to pick a "
-            "probe point on the $(u_1, u_2)$ plane; the red overlay curve "
-            "in the figure recomputes in closed form on every click. The "
-            "t-marker slider sets where the red dot sits along $t$."
-        ),
-        mo.hstack([probe, t_marker_slider], justify="start", align="start"),
-    ])
+    mo.hstack([probe, t_marker_slider], justify="start", align="start")
     return probe, t_marker_slider
 
 
@@ -86,8 +88,6 @@ def _(
     _centers = singular_gradient["centers"]
     _jitter = float(singular_gradient["jitter"])
 
-    # Live probe: read the 2D slider's traits, fall back to (1.5, 0) for the
-    # static-export case where probe.value may not yet be hydrated.
     _pv = probe.value if probe is not None else None
     if isinstance(_pv, dict):
         _ux = float(_pv.get("x_value", 1.5))
@@ -97,7 +97,6 @@ def _(
         _uy = float(getattr(_pv, "y_value", 0.0))
     _u_live = np.array([_ux, _uy])
 
-    # Closed-form per-t raw and preconditioned norms at the live probe.
     _a_vals = a_of_t(_t)
     _b_vals = b_of_t(_t)
     _sigma2 = _a_vals * _a_vals * _jitter + _b_vals * _b_vals
@@ -110,7 +109,6 @@ def _(
     _idx_mark = int(t_marker_slider.value)
     _t_mark = float(_t[_idx_mark])
 
-    # Slope of bounded curve over the divergent regime [b > sqrt(jitter), 0.5].
     _fit_mask = (_t >= 0.01) & (_t <= 0.5)
     _slopes = []
     for _i in range(len(_labels)):
@@ -122,7 +120,6 @@ def _(
 
     _fig, _axes = plt.subplots(1, 3, figsize=(15, 4.4), sharex=True)
 
-    # Panel 1: raw per-t integrand of grad E_marg with 1/b^2 envelope, and live overlay.
     for _i, _lab in enumerate(_labels):
         _y = _raw[_i]
         _mask = _y > 0
@@ -140,7 +137,6 @@ def _(
     _axes[0].set_title("(1) raw: diverges as $1/b^2$")
     _axes[0].legend(fontsize=7, loc="upper right")
 
-    # Panel 2: lambda(t)^2 vs t with b^2 envelope, and a t-mark vline.
     _axes[1].loglog(_t, _lam[0], color="C3", linewidth=1.6,
                     label=r"$\lambda(t)^2 = (b + b^2/a)^2$")
     _axes[1].loglog(_t, _env_b2, "k--", alpha=0.55, linewidth=1.0,
@@ -151,7 +147,6 @@ def _(
     _axes[1].set_title(r"(2) $\lambda(t)^2$: vanishes as $b^2$")
     _axes[1].legend(fontsize=7, loc="upper left")
 
-    # Panel 3: bounded product, precomputed + live overlay + slopes.
     for _i, _lab in enumerate(_labels):
         _y = _pre[_i]
         _mask = _y > 0
@@ -176,32 +171,36 @@ def _(
     _axes[2].set_title("(3) bounded product")
     _axes[2].legend(fontsize=7, loc="upper right")
 
-    _fig.suptitle(
-        "Singular gradient (1) and its conformal cancellation (2 → 3) "
-        "with live probe overlay",
-        y=1.02, fontsize=12,
-    )
-    _fig.text(
-        0.5, -0.02,
-        "Red curves track the live probe set on the 2D plane above. Red "
-        "dots mark the t value chosen on the t-marker slider. Slopes in "
-        "panel 3 are log-log fits over t in [0.01, 0.5]; values near zero "
-        "confirm the cancellation. Curves bend up at t -> 1 because "
-        "lambda = b + b^2/a inherits the FM singularity at a = 0.",
-        ha="center", fontsize=8.5, style="italic",
-    )
     _fig.tight_layout()
     _fig
     return
 
 
 @app.cell
+def _(mo):
+    mo.vstack([
+        mo.md("## 1. The marginal energy and its preconditioner"),
+        mo.callout(
+            mo.md(
+                "Treating $t$ as random turns the family of conditional "
+                "Gaussians into a single mixture density; the conformal "
+                "factor $\\bar\\lambda(u)$ shapes its gradient."
+            ),
+            kind="success",
+        ),
+        mo.md(
+            "Above: the lead figure plots three quantities versus $t$ at "
+            "five fixed probes plus a live red probe. Panel 1 is the "
+            "per-$t$ integrand of $\\nabla E_{\\text{marg}}$; panel 2 is "
+            "$\\lambda(t)^2 = (b + b^2/a)^2$; panel 3 is their product, "
+            "bounded throughout the divergent regime $t \\in [10^{-2}, 0.5]$."
+        ),
+    ])
+    return
+
+
+@app.cell
 def _():
-    # WASM-aware imports. The notebook runs in three runtimes:
-    #   - local  marimo edit  (Python on disk)
-    #   - cloud  molab        (Python server-side)
-    #   - /wasm  preview      (Pyodide in the browser)
-    # Detect the WASM case so the data loader can pick HTTPS over disk.
     import asyncio
     import io
 
@@ -220,20 +219,11 @@ def _():
 
 @app.cell
 def _(np, sp):
-    """Inlined helpers from src/.
-
-    The src/ package remains canonical and is exercised by tests/ and by
-    scripts/precompute_arrays.py. These inline copies are a thin runtime
-    layer so the notebook works in WASM where src/ is not on the import
-    path. Each definition is a verbatim copy of the corresponding src/
-    function, with no behaviour changes; if you edit one here, edit
-    src/ too and rerun pytest.
-    """
+    """Inlined helpers from src/. Verbatim copies; src/ stays canonical."""
     import anywidget
     import traitlets
     from scipy.special import logsumexp
 
-    # ---- src/schedules.py ----
     def a_of_t(t):
         t = np.asarray(t, dtype=np.float64)
         return 1.0 - t
@@ -242,7 +232,6 @@ def _(np, sp):
         t = np.asarray(t, dtype=np.float64)
         return t
 
-    # ---- src/exact_affine.py: discrete-data denoiser ----
     def _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter):
         K, d = centers.shape
         sigma2 = a_vals * a_vals * jitter + b_vals * b_vals
@@ -273,7 +262,6 @@ def _(np, sp):
             D = D[..., 0, :]
         return D
 
-    # ---- src/sympy_validation.py ----
     def validate_velocity_gain():
         a, b, t = sp.symbols("a b t", positive=True, real=True)
         a_dot = sp.symbols("adot", real=True)
@@ -308,7 +296,6 @@ def _(np, sp):
             "ratio_limit": sp.limit(nu_lin / envelope, t, 0, "+"),
         }
 
-    # ---- src/widgets/two_d_slider.py ----
     _ESM_TWO_D_SLIDER = r"""
     function render({ model, el }) {
         const W = 220, H = 220;
@@ -442,14 +429,6 @@ def _(plt):
 
 @app.cell
 async def _(IN_WASM, asyncio, io, np):
-    """Runtime-aware data loader.
-
-    Local marimo edit and cloud molab read data/*.npz from disk;
-    the /wasm preview fetches them over HTTPS from raw.githubusercontent.com.
-    A urllib fallback covers the local-with-no-data-on-disk case.
-    All seven array files plus manifest.json are fetched in parallel via
-    asyncio.gather, so the WASM cold-load is one network round-trip.
-    """
     import json as _json
 
     DATA_BASE_REMOTE = (
@@ -478,7 +457,6 @@ async def _(IN_WASM, asyncio, io, np):
             import pyodide.http
             _resp = await pyodide.http.pyfetch(f"{DATA_BASE_REMOTE}/{name}")
             return await _resp.bytes()
-        # Local but data/ missing: fall back to urllib over HTTPS.
         import urllib.request
         return urllib.request.urlopen(f"{DATA_BASE_REMOTE}/{name}").read()
 
@@ -505,49 +483,6 @@ async def _(IN_WASM, asyncio, io, np):
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    ## Paper claim vs notebook scope
-
-    **Paper result.** The marginal energy
-    $E_{\text{marg}}(u) = -\log \int p(u\mid t)\,p(t)\,dt$ has a $1/b(t)^2$
-    singularity at every data point (Eqs. 11, 12). The autonomous field
-    $f^*(u)$ that an unconditional network learns is structurally a natural
-    gradient $\bar\lambda(u)\,\nabla E_{\text{marg}}(u)$ on a conformal metric
-    $g(u) = 1/\bar\lambda(u)$, plus a transport correction that vanishes in
-    the regimes the paper analyzes (Eqs. 14, 16, 18). The conformal factor
-    $\bar\lambda(u)$ shrinks at the rate $b(t)$ shrinks near the manifold,
-    so the product $\bar\lambda(u) \nabla E_{\text{marg}}(u)$ stays bounded.
-
-    **Notebook result.** We compute $E_{\text{marg}}$, $\nabla E_{\text{marg}}$,
-    the conformal factor $\bar\lambda(u)$, and the resulting preconditioned
-    field on a $120\times 120$ grid for $x \sim \mathcal{N}(0, \Sigma)$ with
-    $\Sigma = \mathrm{diag}([2.0,\,0.5])$. Every quantity is closed form;
-    nothing is fitted. A separate OLS sanity check certifies the conditional-
-    mean derivation against samples without any neural network.
-
-    **Extension.** For an isotropic 2D Gaussian random field with
-    $P(k) \propto k^{-n_s}$, the covariance is diagonal in the Fourier basis,
-    so the analysis applies mode by mode. We plot the per-mode Wiener
-    signal-fraction $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$ as
-    both a heatmap and 1D slices.
-    """)
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Same geometry on smooth Gaussian data for comparison: with no Dirac
-    atoms in $p(x)$, neither field is singular, but the conformal
-    preconditioner still reshapes the flow. Hover over either panel for
-    exact $(u_1, u_2, \text{value})$ readouts; pan and zoom each panel
-    independently.
-    """)
-    return
-
-
-@app.cell
 def _(energy, mo):
     import plotly.figure_factory as _pff
     import plotly.graph_objects as _go
@@ -558,13 +493,9 @@ def _(energy, mo):
     _Gr = energy["grad_raw_grid"]
     _Gp = energy["grad_preconditioned_grid"]
     _Lam = energy["conformal_factor_grid"]
-
-    # 1D coordinate axes (u_grid is built with indexing='ij' so axis 0 is u_1)
     _xs = _u[:, 0, 0]
     _ys = _u[0, :, 1]
 
-    # Streamlines on a 60x60 view of the 120x120 grid: cuts trace size in half
-    # without losing visual fidelity. Heatmaps stay at 120x120.
     _stride = 2
     _xs_s = _xs[::_stride]
     _ys_s = _ys[::_stride]
@@ -607,7 +538,6 @@ def _(energy, mo):
         row=1, col=1,
     )
     _fig_eng.add_trace(_stream_left, row=1, col=1)
-
     _fig_eng.add_trace(
         _go.Heatmap(
             x=_xs, y=_ys, z=_Lam.T,
@@ -618,7 +548,6 @@ def _(energy, mo):
         row=1, col=2,
     )
     _fig_eng.add_trace(_stream_right, row=1, col=2)
-
     _fig_eng.update_xaxes(title_text="u_1", scaleanchor="y", constrain="domain")
     _fig_eng.update_yaxes(title_text="u_2")
     _fig_eng.update_layout(
@@ -626,121 +555,121 @@ def _(energy, mo):
         margin=dict(l=40, r=60, t=50, b=40),
         paper_bgcolor="white", plot_bgcolor="white",
     )
-
     mo.ui.plotly(_fig_eng)
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    ## Geometry of the marginal energy
-
-    **Paper result.** Treating the noise level $t$ as a random variable with
-    prior $p(t)$ converts the family of conditional Gaussians $p(u \mid t)$
-    into a single mixture density $p(u) = \int p(u\mid t)\,p(t)\,dt$. Tweedie's
-    identity gives a closed-form gradient (Eq. 11):
-
-    $$\nabla_u E_{\text{marg}}(u) = \mathbb{E}_{t \mid u}\!\left[
-        \frac{u - a(t)\,D_t^*(u)}{b(t)^2} \right].$$
-
-    The $1/b(t)^2$ kernel diverges as $t \to 0$, so $\|\nabla E_{\text{marg}}\|$
-    is unbounded at every clean datum.
-
-    **Notebook result.** The left panel of the figure above shows
-    $E_{\text{marg}}$ for $\Sigma = \mathrm{diag}([2.0,\,0.5])$ with the raw
-    Euclidean streamlines overlaid. The right panel shows the same field after
-    multiplication by the posterior-averaged conformal factor
-    $\bar\lambda(u) = \mathbb{E}_{t \mid u}[\lambda(t)]$ (paper Eq. 15). Both
-    fields are bounded on this grid because the data distribution we picked,
-    $x \sim \mathcal{N}(0, \Sigma)$, is itself smooth: the marginal $p(u)$ is
-    a continuous mixture of Gaussians with no Dirac atoms, so
-    $\nabla E_{\text{marg}}$ has no singularity. What the figure does show is
-    the *shape* of the conformal preconditioning: $\bar\lambda(u)$ rescales
-    the field non-uniformly, suppressing it more in directions where the
-    posterior $p(t \mid u)$ concentrates on small $t$. The singular-gradient
-    regime requires data on a discrete set or low-dimensional manifold; we
-    do not visualize that case here (see "Limits" below).
-
-    The conformal preconditioner $\bar\lambda(u)$ plays a role analogous to
-    a softened Green's function: it carries a built-in length scale
-    $\sim b(t)$ that suppresses the singular kernel of $\nabla E_{\text{marg}}$
-    at the same rate the singularity grows.
-    """)
+    mo.vstack([
+        mo.md(
+            "On smooth Gaussian data the marginal energy has no Dirac atoms, "
+            "so neither field above is singular. The conformal preconditioner "
+            "still reshapes the flow: $\\bar\\lambda(u)$ contracts the field "
+            "more where the posterior $p(t \\mid u)$ concentrates on small "
+            "$t$. Hover for exact $(u_1, u_2, \\text{value})$ readouts."
+        ),
+        mo.accordion({
+            "Mathematical detail: Tweedie identity (collapse to expand)":
+            mo.md(
+                "$$\\nabla_u \\log p(u \\mid t) = \\frac{a(t) D_t^*(u) - u}{b(t)^2}"
+                "\\qquad \\text{(Tweedie / Robbins, paper Eq. 10)}$$\n\n"
+                "$$\\nabla_u E_{\\text{marg}}(u) = \\mathbb{E}_{t \\mid u}"
+                "\\!\\left[\\frac{u - a(t)\\,D_t^*(u)}{b(t)^2}\\right]"
+                "\\qquad \\text{(paper Eq. 11)}$$"
+            ),
+        }),
+    ])
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    ## Why the raw gradient is singular
-
-    **Paper result.** Equation 11 expresses $\nabla_u E_{\text{marg}}(u)$ as a
-    posterior expectation of $(u - a\,D_t^*)/b^2$. Near a clean datum $x_k$
-    the posterior $p(t \mid u)$ concentrates on small $t$ (paper's Lemmas 5
-    and 6, conditional on codimension $D - d > 2$), where $b(t) \to 0$. The
-    integrand inherits the full $1/b^2$ blow-up, so
-    $\|\nabla E_{\text{marg}}\| \to \infty$ on the support of the data
-    (Eq. 12).
-
-    **Notebook implication.** For data on a discrete set or low-dimensional
-    manifold, a sampler that follows the raw gradient becomes stiff in
-    finite arithmetic; truncating $t$ at some $t_{\min} > 0$ converts the
-    analytic singularity into a Hessian whose eigenvalues scale as
-    $1/t_{\min}^2$. The preconditioned field circumvents this without
-    truncation. Our $x \sim \mathcal{N}(0, \Sigma)$ setup does not put a
-    Dirac atom anywhere, so we cannot reproduce the divergence directly; the
-    implication is theoretical, supported by the paper's Eqs. 12 and 66 and
-    by the stability curves below.
-    """)
+    mo.vstack([
+        mo.md("## 2. Why the raw gradient is singular"),
+        mo.callout(
+            mo.md(
+                "Near a clean datum the posterior $p(t \\mid u)$ collapses on "
+                "small $t$ where $b(t) \\to 0$, so the integrand inherits the "
+                "$1/b^2$ blow-up; $\\lambda(t)^2$ vanishes at the matching "
+                "$b^2$ rate and the product stays bounded."
+            ),
+            kind="success",
+        ),
+    ])
     return
 
 
 @app.cell
-def _(mo, sp, validate_noise_gain_divergence, validate_velocity_gain):
-    _v = validate_velocity_gain()
-    _n = validate_noise_gain_divergence()
-    mo.md(rf"""
-    ### Symbolic verification (sympy)
+def _(np, plt, singular_gradient):
+    _t = singular_gradient["t_axis"]
+    _pre = singular_gradient["preconditioned_grad_norm"]
+    _labels = list(singular_gradient["probe_labels"])
+    _fit_mask = (_t >= 0.01) & (_t <= 0.5)
 
-    The next figure plots the literal Eq. 63 sampler gain $\nu(t)$ for
-    noise and velocity prediction. Before reading the plot we re-derive
-    the two identities the figure rests on directly in sympy. No
-    floating-point arithmetic, no schedule grid; pure symbolic
-    simplification of the same formulas listed in
-    `docs/paper_summary.md`.
+    _fig, _ax = plt.subplots(figsize=(9.5, 4.4))
+    for _i, _lab in enumerate(_labels):
+        _y = _pre[_i]
+        _mask = _y > 0
+        if (_y[_fit_mask] > 0).all() and len(_y[_fit_mask]) > 2:
+            _slope = float(np.polyfit(np.log(_t[_fit_mask]),
+                                      np.log(_y[_fit_mask]), 1)[0])
+            _slope_str = "flat" if abs(_slope) < 0.05 else f"slope {_slope:+.2f}"
+        else:
+            _slope_str = "n/a"
+        _ax.loglog(_t[_mask], _y[_mask], linewidth=1.6,
+                   label=f"{_lab}  ({_slope_str})")
+    _ax.axvspan(0.01, 0.5, color="#fff4dc", alpha=0.5, zorder=0,
+                label="divergent regime $b > \\sqrt{\\mathrm{jitter}}$")
+    _ax.set_xlabel("t")
+    _ax.set_ylabel(r"$\lambda(t)^2 \cdot \|(u - a D_t^*) / \sigma^2\|$")
+    _ax.set_title("Bounded product: the cancellation in close-up")
+    _ax.legend(fontsize=8, loc="upper right")
+    _fig.tight_layout()
+    _fig
+    return
 
-    **Velocity, $(c, d) = (-1, 1)$.** Eq. 63 gives, in symbols,
 
-    $$ \nu(t) \;=\; {sp.latex(_v['nu_general'])}. $$
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md(
+            "On-data probes (at corners or on the symmetry axis) shrink to "
+            "zero. Off-data probes plateau at a probe-dependent constant. "
+            "The shaded band marks $t \\in [0.01, 0.5]$, where the raw "
+            "gradient diverges as $1/b^2$; slopes in the legend are log-log "
+            "fits over that band."
+        ),
+        mo.accordion({
+            "Mathematical detail: the $1/b^2$ envelope (collapse to expand)":
+            mo.md(
+                "For a probe $u$ near a datum $x_k$ and small $t$:\n\n"
+                "$$u - a(t)\\,D_t^*(u) \\;\\approx\\; \\|u - x_k\\|"
+                "\\qquad (a \\to 1,\\; D_t^* \\to x_k)$$\n\n"
+                "$$\\sigma^2(t) \\;\\approx\\; b(t)^2 + a(t)^2 \\cdot "
+                "\\mathrm{jitter} \\;\\to\\; b(t)^2"
+                "\\qquad (\\mathrm{jitter} \\ll b^2)$$\n\n"
+                "$$\\Rightarrow \\quad \\Bigl\\| \\frac{u - a D_t^*}"
+                "{\\sigma^2} \\Bigr\\| \\;\\approx\\; \\frac{\\|u - x_k\\|}"
+                "{b(t)^2} \\quad \\square$$"
+            ),
+        }),
+    ])
+    return
 
-    Substituting the FM linear schedule $a(t) = 1 - t$, $b(t) = t$,
-    $\dot a = -1$, $\dot b = 1$ and asking sympy to simplify yields
 
-    $$ \nu(t)\bigr|_{{\text{{linear FM}}}} \;=\; {sp.latex(_v['nu_linear_FM'])}. $$
-
-    The constant-1 result is paper Eq. 70: under the velocity
-    parameterization the sampler gain neither vanishes nor diverges at any
-    $t$, which is the closed-form reason velocity prediction is the only
-    autonomous parameterization that satisfies the bounded-error
-    condition.
-
-    **Noise, $(c, d) = (0, 1)$.** Same machinery gives
-
-    $$ \nu(t)\bigr|_{{\text{{linear FM}}}}
-        \;=\; {sp.latex(_n['nu_noise_linear_FM'])},
-       \qquad
-       \frac{{\dot b}}{{b}}\bigr|_{{\text{{linear FM}}}}
-        \;=\; {sp.latex(_n['envelope_linear_FM'])}. $$
-
-    Sympy's $\lim_{{t \to 0^+}} \nu(t) / (\dot b/b) =
-    {sp.latex(_n['ratio_limit'])}$. Under FM linear the literal $\nu$ for
-    noise prediction is bounded near the manifold; the divergence the
-    paper attributes to noise prediction lives in the $\dot b / b$
-    envelope of Eq. 66, not in $\nu$ itself. The plot below shows both
-    quantities side by side and lets the reader confirm the ratio behaves
-    as the symbolic limit predicts.
-    """)
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md("## 3. Parameterization stability"),
+        mo.callout(
+            mo.md(
+                "Velocity gain is identically 1; the noise envelope diverges "
+                "as $|\\dot b / b| = 1/t$ under FM linear."
+            ),
+            kind="success",
+        ),
+    ])
     return
 
 
@@ -756,7 +685,7 @@ def _(plt, stability):
     _axes[0].loglog(_t, stability["gain_envelope_analytic"], "--",
                     alpha=0.55, label=r"$|\dot b / b|$ envelope (Eq. 66)")
     _axes[0].set_xlabel("t"); _axes[0].set_ylabel(r"$\nu(t)$  /  envelope")
-    _axes[0].set_title(r"(a) sampler gain coefficient $\nu(t)$ vs near-manifold envelope")
+    _axes[0].set_title(r"(a) sampler gain coefficient $\nu(t)$ vs envelope")
     _axes[0].legend(fontsize=8)
 
     _axes[1].loglog(_t, stability["jensen_gap_noise_pred"], label="noise (eps form)")
@@ -777,138 +706,102 @@ def _(plt, stability):
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    ## Parameterization stability: why velocity wins
-
-    **Paper result.** The unified sampler ODE is
-    $du/dt = \mu(t)\,u + \nu(t)\,f^*(u)$ with closed-form coefficients
-    (Eq. 63):
-
-    $$\mu(t) = \frac{\dot a\,d - \dot b\,c}{a\,d - b\,c},\qquad
-      \nu(t) = \frac{\dot b\,a - \dot a\,b}{a\,d - b\,c}.$$
-
-    For noise prediction, $(c, d) = (0, 1)$, the relevant prefactor near the
-    manifold is $\dot b / b$, which diverges as $1/b(t)$ (Eq. 66). For
-    velocity prediction, $(c, d) = (-1, 1)$, the determinant $a d - b c = 1$
-    forces a constant gain $\nu(t) = 1$ (Eq. 70).
-
-    **Notebook result.** We compute the noise-prediction Jensen Gap
-    $|E_{\tau \mid u}[b(\tau)]\,E_{\tau \mid u}[1/b(\tau)] - 1|$ and the
-    velocity dispersion $E_{\tau \mid u}[\|v_\tau^* - E[v]\|^2]$ on $500$
-    samples per $t$, and multiply by the near-manifold envelope
-    $|\dot b / b|$ for noise prediction and by $1$ for velocity prediction.
-    Panel (a) shows the literal Eq. 63 coefficient for both
-    parameterizations alongside the near-manifold envelope $|\dot b / b|$
-    from Eq. 66; the noise-prediction coefficient is unbounded under FM
-    linear (it grows as $1/(1-t)$ and diverges at $t \to 1$, where
-    $a \to 0$), the envelope diverges at $t \to 0$ where the noise level
-    collapses, and the velocity coefficient is identically 1. Panel (c)
-    shows the product of envelope and gap: the noise curve diverges as
-    $t \to 0$, the velocity curve stays $\mathcal{O}(10^{-2})$. The Jensen
-    Gap (panel b) does not vanish on its own near $t \to 0$; the divergence
-    sits in the envelope, as the paper predicts.
-    """)
+def _(mo, sp, validate_noise_gain_divergence, validate_velocity_gain):
+    _v = validate_velocity_gain()
+    _n = validate_noise_gain_divergence()
+    mo.callout(
+        mo.md(
+            f"**Symbolic verification (sympy).** "
+            f"Velocity, $(c, d) = (-1, 1)$ under FM linear: "
+            f"$\\nu(t) = {sp.latex(_v['nu_linear_FM'])}$ "
+            f"(paper Eq. 70).  "
+            f"Noise, $(c, d) = (0, 1)$: "
+            f"$\\nu(t) = {sp.latex(_n['nu_noise_linear_FM'])}$, "
+            f"envelope $\\dot b / b = {sp.latex(_n['envelope_linear_FM'])}$, "
+            f"and $\\lim_{{t \\to 0^+}} \\nu / (\\dot b/b) = "
+            f"{sp.latex(_n['ratio_limit'])}$. "
+            f"The literal noise $\\nu$ is bounded near the manifold under "
+            f"FM linear; the divergence the paper attributes to noise "
+            f"prediction lives in $\\dot b / b$, not in $\\nu$ itself."
+        ),
+        kind="info",
+    )
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    ### Sanity check: OLS recovers the closed-form Wiener matrix
-
-    **Notebook result.** As an independent check on the conditional-mean
-    derivation, we fit a linear estimator $A(t)$ to $(u_t, \text{target})$
-    pairs by ordinary least squares and compare to the closed forms
-
-    $$A_{\epsilon}(t) = b(t)\,M(t)^{-1},\qquad
-      A_v(t) = \bigl(\dot a(t)\,a(t)\,\Sigma + \dot b(t)\,b(t)\,I\bigr)
-                M(t)^{-1},$$
-
-    where the velocity target is $v = \dot u = \dot a(t)\,x + \dot b(t)\,
-    \epsilon$ (paper Eq. 61). On the FM linear schedule
-    $(\dot a, \dot b) = (-1, 1)$, so $A_v(t) = (b(t)\,I - a(t)\,\Sigma)\,
-    M(t)^{-1}$. We sweep $N \in \{10^3, 10^4, 10^5, 10^6\}$ and plot the
-    relative Frobenius error per $t$ for each. The error scales as
-    $1/\sqrt{N}$ as Gaussian linear-regression theory predicts, so each
-    decade in $N$ shifts the curve by $\sqrt{10}$ on a semilog plot.
-    The vertical ladder is the diagnostic: it confirms that the forward
-    process, the schedule, the schedule derivatives, and the conditional-
-    mean derivation in `src/exact_affine.py` are mutually consistent. No
-    neural network is fitted; OLS on a closed-form linear estimator is the
-    only learning step in this notebook. The full numerics are recorded in
-    `docs/implementation_notes.md`.
-    """)
+    mo.vstack([
+        mo.md("## 4. OLS scaling: linear regression recovers the closed form"),
+        mo.callout(
+            mo.md(
+                "Each decade in sample size $N$ shifts the relative "
+                "Frobenius error by $\\sqrt{10}$, exactly as Gaussian "
+                "linear-regression theory predicts."
+            ),
+            kind="success",
+        ),
+    ])
     return
 
 
 @app.cell
-def _(linear_fit, plt):
+def _(linear_fit, mo):
+    _Ns = linear_fit["n_samples_list"]
+    n_highlight_slider = mo.ui.slider(
+        start=0, stop=len(_Ns) - 1, step=1, value=2,
+        label=f"highlight N = (default 10^{int(round(__import__('math').log10(int(_Ns[2]))))})",
+    )
+    return (n_highlight_slider,)
+
+
+@app.cell
+def _(linear_fit, mo, n_highlight_slider, plt):
     _t = linear_fit["t_values"]
     _Ns = linear_fit["n_samples_list"]
     _eps_grid = linear_fit["rel_err_eps_grid"]
     _v_grid = linear_fit["rel_err_v_grid"]
+    _hi = int(n_highlight_slider.value)
 
-    _fig, _ax = plt.subplots(figsize=(8.5, 5.2))
+    _fig, _ax = plt.subplots(figsize=(8.5, 5.0))
     _cmap = plt.get_cmap("viridis")
     for _j, _N in enumerate(_Ns):
         _color = _cmap(_j / max(len(_Ns) - 1, 1))
-        _ax.semilogy(_t, _eps_grid[_j], "o-", color=_color, linewidth=1.6,
-                     label=f"eps, N = {int(_N):>7d}")
-        _ax.semilogy(_t, _v_grid[_j], "s--", color=_color, linewidth=1.2,
-                     alpha=0.85, label=f"v,   N = {int(_N):>7d}")
-        _ax.axhline(float(_N) ** -0.5, color=_color, ls=":", alpha=0.55, linewidth=0.9)
-
+        _alpha = 1.0 if _j == _hi else 0.35
+        _lw_eps = 2.4 if _j == _hi else 1.2
+        _lw_v = 2.0 if _j == _hi else 1.0
+        _ax.semilogy(_t, _eps_grid[_j], "o-", color=_color, linewidth=_lw_eps,
+                     alpha=_alpha, label=f"eps, N = {int(_N):>7d}")
+        _ax.semilogy(_t, _v_grid[_j], "s--", color=_color, linewidth=_lw_v,
+                     alpha=_alpha * 0.85, label=f"v,   N = {int(_N):>7d}")
+        _ax.axhline(float(_N) ** -0.5, color=_color, ls=":",
+                    alpha=_alpha * 0.55, linewidth=0.9)
     _ax.set_xlabel("t")
     _ax.set_ylabel(r"$\|A_{\mathrm{OLS}} - A_{\mathrm{exact}}\|_F / \|A_{\mathrm{exact}}\|_F$")
-    _ax.set_title("OLS recovery of the closed-form Wiener matrix vs N")
+    _ax.set_title(f"OLS recovery vs N (highlighted: N = {int(_Ns[_hi])})")
     _ax.legend(ncol=2, fontsize=8, loc="upper right")
-    _fig.text(
-        0.5, -0.02,
-        "Each decade in N shifts the error floor by a factor of ~sqrt(10). "
-        "The vertical ladder is the diagnostic, not any single number. "
-        "Dotted horizontal lines mark 1/sqrt(N) per N.",
-        ha="center", fontsize=8.5, style="italic",
-    )
     _fig.tight_layout()
-    _fig
+
+    mo.hstack([n_highlight_slider, _fig], justify="start", align="start", widths=[1, 4])
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    ## Extension: Fourier-mode shrinkage for Gaussian random fields
-
-    **Extension.** For an isotropic 2D Gaussian random field with isotropic
-    power $\sigma_k^2 \propto k^{-n_s}$ and $\sigma_0^2 = 0$, the covariance
-    is diagonal in the Fourier basis. Each mode $k$ then independently
-    realizes the affine-noising geometry of the paper, with the same scalar
-    schedule $a(t), b(t)$ acting per mode. We picked Gaussian random fields
-    as the substrate because they make the mode-by-mode Wiener picture both
-    exact and easy to plot; the paper itself sticks to discrete data sets and
-    does not draw this picture.
-
-    **Extension result (gallery and PSD).** The gallery below shows sample
-    fields for $n_s \in \{1, 2, 3\}$. As $n_s$ grows the spectrum reddens
-    and the texture coarsens. The PSD overlay validates the generator: the
-    measured radial slope agrees with the analytic $-n_s$ within $\pm 0.06$
-    at $B = 512$ samples per $n_s$ (numbers in `docs/implementation_notes.md`).
-
-    **Extension result (shrinkage).** The two sliders below select a noise
-    level $t$ and a spectral index $n_s \in \{1, 2, 3\}$, and the figure
-    panel re-renders the per-mode Wiener signal-fraction
-    $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$ accordingly. We
-    plot the signal-fraction $W$ rather than the Wiener gain
-    $g = a \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$; the two differ by a factor
-    of $a(t)$, and $W$ is the bounded $[0, 1]$ quantity that gives the
-    variance fraction of $u_t$ at mode $k$ originating from signal. As
-    $t \to 0$, $W \to 1$ for every mode, recovering the data; at
-    intermediate $t$ the high-$k$ modes fall toward $0$ first because their
-    signal-to-noise ratio drops fastest. This is the per-mode picture of
-    the same Wiener preconditioning that $\bar\lambda(u)$ implements
-    globally.
-    """)
+    mo.vstack([
+        mo.md("## 5. Extension: Fourier-mode shrinkage on Gaussian random fields"),
+        mo.callout(
+            mo.md(
+                "**Notebook contribution beyond the paper.** For an isotropic "
+                "Gaussian random field with $P(k) \\propto k^{-n_s}$, the "
+                "covariance is diagonal in the Fourier basis and the autonomous "
+                "flow factorizes mode by mode. The closed-form half-power "
+                "cutoff $k_c(t, n_s) = (a/b)^{2/n_s}$ traces the moving "
+                "signal-vs-noise boundary."
+            ),
+            kind="info",
+        ),
+    ])
     return
 
 
@@ -929,8 +822,8 @@ def _(gallery, plt):
                 _ax.set_ylabel(f"n_s = {_ns}", fontsize=11)
     _fig.suptitle("2D Gaussian random fields: sample gallery", y=0.995)
     _fig.tight_layout()
-    _fig
-    return
+    gallery_block = _fig
+    return (gallery_block,)
 
 
 @app.cell
@@ -951,27 +844,26 @@ def _(gallery, plt):
     _ax.set_title("radial PSD: measured (512 fields per n_s) vs. theoretical")
     _ax.legend(ncol=2, fontsize=8)
     _fig.tight_layout()
-    _fig
-    return
+    psd_block = _fig
+    return (psd_block,)
 
 
 @app.cell
 def _(mo, shrinkage):
-    n_t = len(shrinkage["t_values"])
-    t_slider = mo.ui.slider(
-        start=0, stop=n_t - 1, step=1, value=n_t // 2, label="t index"
+    _n_t = len(shrinkage["t_values"])
+    shrink_t_slider = mo.ui.slider(
+        start=0, stop=_n_t - 1, step=1, value=_n_t // 2, label="t index"
     )
-    n_s_dropdown = mo.ui.dropdown(
+    shrink_ns_dropdown = mo.ui.dropdown(
         options=["1", "2", "3"], value="2", label="spectral index n_s"
     )
-    mo.vstack([t_slider, n_s_dropdown])
-    return n_s_dropdown, t_slider
+    return shrink_ns_dropdown, shrink_t_slider
 
 
 @app.cell
-def _(n_s_dropdown, plt, shrinkage, t_slider):
-    _ns = int(n_s_dropdown.value)
-    _idx = int(t_slider.value)
+def _(mo, plt, shrink_ns_dropdown, shrink_t_slider, shrinkage):
+    _ns = int(shrink_ns_dropdown.value)
+    _idx = int(shrink_t_slider.value)
     _centers = shrinkage["radial_centers"]
     _t_vals = shrinkage["t_values"]
     _rad = shrinkage[f"shrinkage_radial_ns{_ns}"]
@@ -1014,25 +906,11 @@ def _(n_s_dropdown, plt, shrinkage, t_slider):
     _ax2.legend(fontsize=8)
 
     _fig.tight_layout()
-    _fig
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    ### Forward corruption and exact reverse flow on one GRF
-
-    We take one clean GRF, draw one forward noise once, and run the exact
-    reverse flow on the corrupted field. No neural network is involved;
-    every reverse step is a closed-form scalar Wiener-style filter per
-    Fourier mode, with per-mode coefficient $c_k(t) = (\dot a\,a\,
-    \sigma_k^2 + \dot b\,b) / (a^2 \sigma_k^2 + b^2)$. The reverse-flow
-    row visibly approaches the clean field in the lowest-$t$ panel. This
-    is the autonomous-field generation process from the paper made fully
-    explicit on a substrate where it has a closed form.
-    """)
-    return
+    shrinkage_block = mo.hstack(
+        [mo.vstack([shrink_t_slider, shrink_ns_dropdown]), _fig],
+        justify="start", align="start", widths=[1, 4],
+    )
+    return (shrinkage_block,)
 
 
 @app.cell
@@ -1044,11 +922,9 @@ def _(grf_flow_strip, np):
     flow_strip_t = grf_flow_strip["reverse_strip_t_values"]
     flow_strip_rev = grf_flow_strip["reverse_strip"]
     flow_strip_fwd = grf_flow_strip["forward_fields"]
-
     flow_n_steps = int(flow_traj.shape[0])
     flow_vmax = float(np.max(np.abs(flow_clean)))
     return (
-        flow_clean,
         flow_fwd_at_traj,
         flow_n_steps,
         flow_strip_fwd,
@@ -1063,12 +939,12 @@ def _(grf_flow_strip, np):
 @app.cell
 def _(flow_n_steps, mo):
     flow_step_slider = mo.ui.slider(
-        start=0, stop=flow_n_steps - 1, step=1, value=0, label="reverse step"
+        start=0, stop=flow_n_steps - 1, step=1, value=flow_n_steps // 2,
+        label="reverse step",
     )
     flow_play_speed = mo.ui.refresh(
-        options=["off", "0.5s", "0.25s"], default_interval="off", label="auto-play"
+        options=["off", "0.5s", "0.25s"], default_interval="off", label="auto-play",
     )
-    mo.hstack([flow_step_slider, flow_play_speed], justify="start")
     return flow_play_speed, flow_step_slider
 
 
@@ -1086,7 +962,6 @@ def _(
     get_flow_step,
     set_flow_step,
 ):
-    # Subscribe to the refresh's value so this cell re-runs on every tick.
     _refresh_value = flow_play_speed.value
     _is_playing = _refresh_value not in ("off", None)
     if _is_playing:
@@ -1097,7 +972,21 @@ def _(
 
 
 @app.cell
-def _(flow_fwd_at_traj, flow_traj, flow_traj_t, flow_vmax, get_flow_step, mo):
+def _(
+    flow_fwd_at_traj,
+    flow_play_speed,
+    flow_step_slider,
+    flow_strip_fwd,
+    flow_strip_rev,
+    flow_strip_t,
+    flow_traj,
+    flow_traj_t,
+    flow_vmax,
+    get_flow_step,
+    grf_flow_strip,
+    mo,
+    plt,
+):
     import plotly.graph_objects as _go
     from plotly.subplots import make_subplots as _make_subplots
 
@@ -1136,76 +1025,41 @@ def _(flow_fwd_at_traj, flow_traj, flow_traj_t, flow_vmax, get_flow_step, mo):
         margin=dict(l=20, r=20, t=50, b=20),
         paper_bgcolor="white", plot_bgcolor="white",
     )
-    mo.ui.plotly(_fig_live)
-    return
+    _live = mo.ui.plotly(_fig_live)
 
-
-@app.cell
-def _(
-    flow_clean,
-    flow_strip_fwd,
-    flow_strip_rev,
-    flow_strip_t,
-    flow_vmax,
-    grf_flow_strip,
-    mo,
-    np,
-    plt,
-):
+    # Static 2x4 fallback strip
     _fwd_t_static = grf_flow_strip["forward_t_values"]
     _fig_static, _axes = plt.subplots(2, 4, figsize=(13, 6.4))
-
     for _j in range(4):
         _ax = _axes[0, _j]
         _ax.imshow(flow_strip_fwd[_j], cmap="RdBu_r",
                    vmin=-flow_vmax, vmax=flow_vmax)
         _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
-        _ax.set_title(f"forward, t = {float(_fwd_t_static[_j]):.3f}", fontsize=10)
-
-    # Bottom row read right-to-left so the visual is "motion back toward t=0".
+        _ax.set_title(f"fwd t = {float(_fwd_t_static[_j]):.3f}", fontsize=10)
     _rev_order = list(range(3, -1, -1))
     for _col, _src in enumerate(_rev_order):
         _ax = _axes[1, _col]
         _ax.imshow(flow_strip_rev[_src], cmap="RdBu_r",
                    vmin=-flow_vmax, vmax=flow_vmax)
         _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
-        _ax.set_title(f"reverse, t = {float(flow_strip_t[_src]):.3f}", fontsize=10)
-
+        _ax.set_title(f"rev t = {float(flow_strip_t[_src]):.3f}", fontsize=10)
     _axes[0, 0].set_ylabel("forward", fontsize=11)
     _axes[1, 0].set_ylabel("reverse", fontsize=11)
     _fig_static.tight_layout()
 
-    mo.accordion(
-        {
-            "Static snapshot at t in [0.05, 0.2, 0.5, 0.8]  (fallback for PDF / static export)":
-            _fig_static
-        }
-    )
-    # silence unused-name warnings for variables only consumed via the
-    # accordion's matplotlib payload
-    _ = (flow_clean, np)
-    return
+    flow_block = mo.vstack([
+        mo.hstack([flow_step_slider, flow_play_speed], justify="start"),
+        _live,
+        mo.accordion({
+            "Static 2x4 strip (fallback for static export / PDF)":
+            _fig_static,
+        }),
+    ])
+    return (flow_block,)
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    ### Half-power cutoff $k_c(t, n_s)$
-
-    The half-power cutoff $k_c(t, n_s)$ is the radial wavenumber at which
-    the per-mode signal-fraction $W$ drops to $1/2$. Setting
-    $W = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2) = 1/2$ with
-    $\sigma_k^2 \propto k^{-n_s}$ collapses to $a^2 \sigma_k^2 = b^2$,
-    so $k_c(t, n_s) = (a(t) / b(t))^{2 / n_s}$ in closed form.
-    The autonomous flow preserves modes with $k < k_c$ at noise level $t$
-    and is dominated by noise above $k_c$, so $k_c(t)$ traces the moving
-    boundary between signal and noise as $t$ varies.
-    """)
-    return
-
-
-@app.cell
-def _(plt, shrinkage):
+def _(mo, plt, shrinkage):
     _t = shrinkage["t_values"]
     _kc = shrinkage["k_c_curves"]
     _ns_list = shrinkage["k_c_n_s_list"]
@@ -1220,47 +1074,93 @@ def _(plt, shrinkage):
     _ax.set_ylabel(r"$k_c(t, n_s)$")
     _ax.set_title("Half-power cutoff $k_c(t, n_s)$")
     _ax.legend()
-    _fig.text(
-        0.5, -0.02,
-        "Solid lines are the closed form k_c = (a/b)^(2/n_s). "
-        "Steeper spectra (larger n_s) keep more high-k structure as the noise level grows.",
-        ha="center", fontsize=8.5, style="italic",
-    )
     _fig.tight_layout()
-    _fig
+
+    kc_block = mo.vstack([
+        _fig,
+        mo.callout(
+            mo.md(
+                "$$k_c(t, n_s) \\;=\\; \\bigl(a(t)/b(t)\\bigr)^{2/n_s}$$"
+                "  Setting the per-mode signal-fraction $W = 1/2$ in "
+                "$a^2 \\sigma_k^2 = b^2$ with $\\sigma_k^2 = k^{-n_s}$ "
+                "gives the closed form."
+            ),
+            kind="info",
+        ),
+    ])
+    return (kc_block,)
+
+
+@app.cell
+def _(flow_block, gallery_block, kc_block, mo, psd_block, shrinkage_block):
+    mo.ui.tabs({
+        "Gallery": gallery_block,
+        "PSD": psd_block,
+        "Shrinkage W(k,t)": shrinkage_block,
+        "Forward / reverse flow": flow_block,
+        "k_c cutoff": kc_block,
+    })
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    Each tab is self-contained. The shrinkage tab carries its own $t$ slider and $n_s$ dropdown bound to the heatmap; the forward/reverse-flow tab carries a scrub-and-play widget plus a static 2x4 strip fallback in a collapsed accordion. The $k_c$ closed form is what the paper does not state explicitly: it isolates the moving boundary between signal-preserved and noise-dominated modes as a function of $(t, n_s)$.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md("## 6. Limits"),
+        mo.callout(
+            mo.md(
+                "**1.** No image-generation experiments. We do not retrain "
+                "DDPM / Flow-Matching U-Nets on CIFAR-10, SVHN, or Fashion-MNIST."
+            ),
+            kind="warn",
+        ),
+        mo.callout(
+            mo.md(
+                "**2.** The exact story assumes linear-Gaussian data; the "
+                "paper's manifold + discrete-set analysis (Appendix E) is not "
+                "implemented here."
+            ),
+            kind="warn",
+        ),
+        mo.callout(
+            mo.md(
+                "**3.** No neural score network. The OLS sanity check fits a "
+                "linear estimator whose closed form is already known."
+            ),
+            kind="warn",
+        ),
+        mo.callout(
+            mo.md(
+                "**4.** The GRF extension is isotropic only. Anisotropic "
+                "covariances induce mode coupling we did not implement."
+            ),
+            kind="warn",
+        ),
+    ])
     return
 
 
 @app.cell
 def _(mo):
     mo.md(r"""
-    ## Limits and what this notebook does not claim
+    ## 7. References
 
-    Four constraints bound the analytic story above.
+    - **[1]** Sahraee-Ardakan, M., Delbracio, M., Milanfar, P. *The Geometry of Noise: Why Diffusion Models Don't Need Noise Conditioning.* arXiv:2602.18428v1, Google, February 2026.
+    - **[2]** Sun, Q., Jiang, Z., Zhao, H., He, K. *Is noise conditioning necessary for denoising generative models?* arXiv:2502.13129, 2025.
+    - **[3]** Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., Le, M. *Flow Matching for Generative Modeling.* arXiv:2210.02747, 2023.
+    - **[4]** Wang, R., Du, Y. *Equilibrium Matching: Generative Modeling with Implicit Energy-Based Models.* arXiv:2510.02300, 2025.
+    - **[5]** Salimans, T., Ho, J. *Progressive Distillation for Fast Sampling of Diffusion Models.* ICLR 2022.
 
-    **1. We do not reproduce the image-generation experiments.** The paper's
-    Section 7 trains DDPM and Flow-Matching variants on CIFAR-10, SVHN, and
-    Fashion-MNIST. We do not retrain those U-Nets, and we do not reproduce
-    Figures 2-4 or Table 3. Our claims live entirely in the closed-form
-    regime.
-
-    **2. The exact story assumes linear-Gaussian data.** Every conditional,
-    posterior, and score in this notebook is closed form precisely because
-    $x \sim \mathcal{N}(0, \Sigma)$. The paper's near-manifold analysis
-    (Appendix E, Lemmas 5-6) covers discrete data sets and smooth manifolds
-    too, but we did not implement either path.
-
-    **3. We do not train a neural score network.** The OLS sanity check
-    above fits a *linear* estimator whose closed form is already known; that
-    is the only learning step in this notebook. Statements about
-    parameterization stability are derived from the closed form, not measured
-    on a trained model.
-
-    **4. The GRF extension is isotropic only.** We assume
-    $\sigma_k^2 = k^{-n_s}$ depends on $\|k\|$ alone, which keeps the
-    covariance diagonal in the Fourier basis. Anisotropic or non-stationary
-    covariances induce mode coupling that we did not implement; the per-mode
-    Wiener picture would no longer collapse to a single 2D heatmap.
+    Source: `geometry-of-noise-molab/`. See `docs/paper_summary.md` and
+    `docs/implementation_notes.md` for the equation extraction and numerical caveats.
     """)
     return
 
@@ -1268,51 +1168,15 @@ def _(mo):
 @app.cell
 def _(manifest, mo):
     _entries = "\n".join(f"- `{_k}`: `{_v}`" for _k, _v in manifest.items())
-    mo.md(
-        "### Data provenance\n\n"
-        "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
-        "with fixed seeds. The SHA-256 prefixes below come from the live "
-        "`data/manifest.json` (fetched alongside the data); rerun "
-        "`python scripts/reproduce.py` to regenerate every `.npz` and "
-        "the manifest.\n\n"
-        + _entries
-    )
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    ## References
-
-    [1] Sahraee-Ardakan, M., Delbracio, M., Milanfar, P. *The Geometry of
-    Noise: Why Diffusion Models Don't Need Noise Conditioning.*
-    arXiv:2602.18428v1, Google, February 2026. The paper this notebook
-    reproduces.
-
-    [2] Sun, Q., Jiang, Z., Zhao, H., He, K. *Is noise conditioning necessary
-    for denoising generative models?* arXiv:2502.13129, 2025. Source of the
-    unified affine-schedule formulation $u_t = a(t) x + b(t) \epsilon$ used
-    throughout.
-
-    [3] Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., Le, M.
-    *Flow Matching for Generative Modeling.* arXiv:2210.02747, 2023. Source
-    of the linear schedule $a(t) = 1 - t,\,b(t) = t$ adopted here.
-
-    [4] Wang, R., Du, Y. *Equilibrium Matching: Generative Modeling with
-    Implicit Energy-Based Models.* arXiv:2510.02300, 2025. The autonomous-
-    field architecture whose stability analysis the paper [1] formalizes.
-
-    [5] Salimans, T., Ho, J. *Progressive Distillation for Fast Sampling of
-    Diffusion Models.* ICLR 2022. An alternative velocity convention,
-    $v = \alpha_t\,\epsilon - \sigma_t\,x$, retained for reference as
-    `velocity_target_SH` in `src/exact_affine.py` but not used in any
-    figure or stability claim in this notebook.
-
-    The full source for this notebook is at `geometry-of-noise-molab/`. See
-    `docs/paper_summary.md` for the equation-by-equation extraction and
-    `docs/implementation_notes.md` for numerical caveats.
-    """)
+    mo.accordion({
+        "Data provenance manifest (collapse to expand)":
+        mo.md(
+            "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
+            "with fixed seeds. SHA-256 prefixes are fetched live alongside "
+            "the data; rerun `python scripts/reproduce.py` to regenerate.\n\n"
+            + _entries
+        ),
+    })
     return
 
 
