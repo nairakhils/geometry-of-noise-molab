@@ -127,16 +127,29 @@ def _():
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
+    import sympy as sp
 
     REPO_ROOT = Path(__file__).resolve().parents[1]
     if str(REPO_ROOT) not in _sys.path:
         _sys.path.insert(0, str(REPO_ROOT))
 
-    # The notebook itself only consumes data/*.npz; the math layer in src/
-    # is exercised by tests/ and by scripts/precompute_arrays.py. To check
-    # the math layer is importable in this environment, run:
-    #   assert __import__("src.exact_affine") and __import__("src.grf_2d")
-    return REPO_ROOT, mo, np, plt
+    # The notebook consumes data/*.npz for figures and src.sympy_validation
+    # for the symbolic re-derivation cell. The rest of src/ is exercised by
+    # tests/ and scripts/precompute_arrays.py.
+    from src.sympy_validation import (
+        validate_noise_gain_divergence,
+        validate_velocity_gain,
+    )
+
+    return (
+        REPO_ROOT,
+        mo,
+        np,
+        plt,
+        sp,
+        validate_noise_gain_divergence,
+        validate_velocity_gain,
+    )
 
 
 @app.cell
@@ -328,6 +341,54 @@ def _(mo):
     Dirac atom anywhere, so we cannot reproduce the divergence directly; the
     implication is theoretical, supported by the paper's Eqs. 12 and 66 and
     by the stability curves below.
+    """)
+    return
+
+
+@app.cell
+def _(mo, sp, validate_noise_gain_divergence, validate_velocity_gain):
+    _v = validate_velocity_gain()
+    _n = validate_noise_gain_divergence()
+    mo.md(rf"""
+    ### Symbolic verification (sympy)
+
+    The next figure plots the literal Eq. 63 sampler gain $\nu(t)$ for
+    noise and velocity prediction. Before reading the plot we re-derive
+    the two identities the figure rests on directly in sympy. No
+    floating-point arithmetic, no schedule grid; pure symbolic
+    simplification of the same formulas listed in
+    `docs/paper_summary.md`.
+
+    **Velocity, $(c, d) = (-1, 1)$.** Eq. 63 gives, in symbols,
+
+    $$ \nu(t) \;=\; {sp.latex(_v['nu_general'])}. $$
+
+    Substituting the FM linear schedule $a(t) = 1 - t$, $b(t) = t$,
+    $\dot a = -1$, $\dot b = 1$ and asking sympy to simplify yields
+
+    $$ \nu(t)\bigr|_{{\text{{linear FM}}}} \;=\; {sp.latex(_v['nu_linear_FM'])}. $$
+
+    The constant-1 result is paper Eq. 70: under the velocity
+    parameterization the sampler gain neither vanishes nor diverges at any
+    $t$, which is the closed-form reason velocity prediction is the only
+    autonomous parameterization that satisfies the bounded-error
+    condition.
+
+    **Noise, $(c, d) = (0, 1)$.** Same machinery gives
+
+    $$ \nu(t)\bigr|_{{\text{{linear FM}}}}
+        \;=\; {sp.latex(_n['nu_noise_linear_FM'])},
+       \qquad
+       \frac{{\dot b}}{{b}}\bigr|_{{\text{{linear FM}}}}
+        \;=\; {sp.latex(_n['envelope_linear_FM'])}. $$
+
+    Sympy's $\lim_{{t \to 0^+}} \nu(t) / (\dot b/b) =
+    {sp.latex(_n['ratio_limit'])}$. Under FM linear the literal $\nu$ for
+    noise prediction is bounded near the manifold; the divergence the
+    paper attributes to noise prediction lives in the $\dot b / b$
+    envelope of Eq. 66, not in $\nu$ itself. The plot below shows both
+    quantities side by side and lets the reader confirm the ratio behaves
+    as the symbolic limit predicts.
     """)
     return
 
