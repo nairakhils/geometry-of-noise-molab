@@ -1,5 +1,10 @@
-data/*.npz
 __pycache__/
 .venv/
 .ruff_cache/
 .pytest_cache/
+scratch/
+preview/
+
+# data/*.npz are normally cache, but the molab/GitHub-static-preview deployment
+# needs them in the repo so the notebook can load without running the precompute
+# script first. Tracked explicitly via `git add -f data/*.npz` in CI.
