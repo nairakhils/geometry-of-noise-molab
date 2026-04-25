@@ -7,6 +7,13 @@ preview/
 preview_local/
 preview_local_wasm/
 
+# Internal-only docs / submission artifacts. Kept locally for reference but
+# stripped from git history; do not re-commit.
+
+
+
+
+
 # data/*.npz are normally cache, but the molab/GitHub-static-preview deployment
 # needs them in the repo so the notebook can load without running the precompute
 # script first. Tracked explicitly via `git add -f data/*.npz` in CI.
