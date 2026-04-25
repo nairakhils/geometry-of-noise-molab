@@ -9,7 +9,7 @@ preview_local_wasm/
 
 # Internal local-only artifacts (kept on disk, not tracked).
 docs/*.png
-docs/*
+docs/*report*
 docs/*checklist*
 scripts/screenshot*.py
 
