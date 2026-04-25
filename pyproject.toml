@@ -15,6 +15,7 @@ dependencies = [
     "matplotlib",
     "plotly",
     "sympy",
+    "anywidget",
 ]
 
 [project.optional-dependencies]

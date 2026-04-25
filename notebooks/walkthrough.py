@@ -34,14 +34,49 @@ def _(mo):
     raw integrand norm tracks the $1/b^2$ envelope (panel 1), the paper's
     conformal factor $\lambda(t)^2$ vanishes at the matching $b^2$ rate
     (panel 2), and their product stays bounded over the divergent regime
-    (panel 3). The original-claim part of this notebook is a Fourier-mode
-    shrinkage picture for isotropic Gaussian random fields, presented later.
+    (panel 3). A 2D-slider widget below the TLDR adds a live red overlay:
+    click anywhere on the $(u_1, u_2)$ plane and the red curve recomputes
+    in closed form on every click. The original-claim part of this
+    notebook is a Fourier-mode shrinkage picture for isotropic Gaussian
+    random fields, presented later.
     """)
     return
 
 
 @app.cell
-def _(np, plt, singular_gradient):
+def _(TwoDSliderWidget, mo, singular_gradient):
+    _n_t = len(singular_gradient["t_axis"])
+    probe = mo.ui.anywidget(
+        TwoDSliderWidget(x_range=[-3.0, 3.0], y_range=[-3.0, 3.0],
+                         x_value=1.5, y_value=0.0)
+    )
+    t_marker_slider = mo.ui.slider(
+        start=0, stop=_n_t - 1, step=1, value=int(_n_t * 0.4),
+        label="t marker index",
+    )
+    mo.vstack([
+        mo.md(
+            "**Live probe.** Click anywhere on the plane below to pick a "
+            "probe point on the $(u_1, u_2)$ plane; the red overlay curve "
+            "in the figure recomputes in closed form on every click. The "
+            "t-marker slider sets where the red dot sits along $t$."
+        ),
+        mo.hstack([probe, t_marker_slider], justify="start", align="start"),
+    ])
+    return probe, t_marker_slider
+
+
+@app.cell
+def _(
+    a_of_t,
+    b_of_t,
+    denoiser_discrete,
+    np,
+    plt,
+    probe,
+    singular_gradient,
+    t_marker_slider,
+):
     _t = singular_gradient["t_axis"]
     _raw = singular_gradient["raw_grad_norm"]
     _lam = singular_gradient["lambda_bar_curves"]
@@ -49,10 +84,34 @@ def _(np, plt, singular_gradient):
     _env_inv = singular_gradient["envelope_inv_b_squared"]
     _env_b2 = singular_gradient["envelope_b_squared"]
     _labels = list(singular_gradient["probe_labels"])
+    _centers = singular_gradient["centers"]
+    _jitter = float(singular_gradient["jitter"])
 
-    # Slope of the bounded curve over the divergent regime
-    # (t in [b > sqrt(jitter), 0.5]; below sqrt(jitter)=0.01 the integrand
-    # saturates at the jitter floor and the slope is uninformative).
+    # Live probe: read the 2D slider's traits, fall back to (1.5, 0) for the
+    # static-export case where probe.value may not yet be hydrated.
+    _pv = probe.value if probe is not None else None
+    if isinstance(_pv, dict):
+        _ux = float(_pv.get("x_value", 1.5))
+        _uy = float(_pv.get("y_value", 0.0))
+    else:
+        _ux = float(getattr(_pv, "x_value", 1.5))
+        _uy = float(getattr(_pv, "y_value", 0.0))
+    _u_live = np.array([_ux, _uy])
+
+    # Closed-form per-t raw and preconditioned norms at the live probe.
+    _a_vals = a_of_t(_t)
+    _b_vals = b_of_t(_t)
+    _sigma2 = _a_vals * _a_vals * _jitter + _b_vals * _b_vals
+    _D_live = denoiser_discrete(_u_live, _t, _centers, _jitter)
+    _integrand_live = (_u_live - _a_vals[:, None] * _D_live) / _sigma2[:, None]
+    _raw_live = np.linalg.norm(_integrand_live, axis=-1)
+    _lam_t = _b_vals + _b_vals * _b_vals / np.where(_a_vals > 0, _a_vals, np.nan)
+    _pre_live = _lam_t * _lam_t * _raw_live
+
+    _idx_mark = int(t_marker_slider.value)
+    _t_mark = float(_t[_idx_mark])
+
+    # Slope of bounded curve over the divergent regime [b > sqrt(jitter), 0.5].
     _fit_mask = (_t >= 0.01) & (_t <= 0.5)
     _slopes = []
     for _i in range(len(_labels)):
@@ -64,54 +123,72 @@ def _(np, plt, singular_gradient):
 
     _fig, _axes = plt.subplots(1, 3, figsize=(15, 4.4), sharex=True)
 
-    # Panel 1: raw per-t integrand of grad E_marg, with 1/b^2 envelope.
+    # Panel 1: raw per-t integrand of grad E_marg with 1/b^2 envelope, and live overlay.
     for _i, _lab in enumerate(_labels):
         _y = _raw[_i]
         _mask = _y > 0
-        _axes[0].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.4)
+        _axes[0].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.2, alpha=0.65)
     _axes[0].loglog(_t, _env_inv, "k--", alpha=0.55, linewidth=1.0,
                     label=r"$1 / b(t)^2$ envelope")
+    _live_mask = _raw_live > 0
+    _axes[0].loglog(_t[_live_mask], _raw_live[_live_mask], "r-", linewidth=2.2,
+                    label=f"LIVE ({_ux:.2f}, {_uy:.2f})")
+    if _live_mask[_idx_mark]:
+        _axes[0].plot(_t_mark, _raw_live[_idx_mark], "ro",
+                      markersize=10, markeredgecolor="white", zorder=10)
     _axes[0].set_xlabel("t")
     _axes[0].set_ylabel(r"$\|(u - a D_t^*) / \sigma^2\|$")
     _axes[0].set_title("(1) raw: diverges as $1/b^2$")
     _axes[0].legend(fontsize=7, loc="upper right")
 
-    # Panel 2: lambda(t)^2 vs t, with b^2 envelope.
-    # Same curve for every probe (no probe dependence in lambda(t)),
-    # so a single line covers all.
+    # Panel 2: lambda(t)^2 vs t with b^2 envelope, and a t-mark vline.
     _axes[1].loglog(_t, _lam[0], color="C3", linewidth=1.6,
                     label=r"$\lambda(t)^2 = (b + b^2/a)^2$")
     _axes[1].loglog(_t, _env_b2, "k--", alpha=0.55, linewidth=1.0,
                     label=r"$b(t)^2$ envelope")
+    _axes[1].axvline(_t_mark, color="red", linestyle=":", alpha=0.6, linewidth=1.0)
     _axes[1].set_xlabel("t")
     _axes[1].set_ylabel(r"$\bar\lambda$ proxy")
     _axes[1].set_title(r"(2) $\lambda(t)^2$: vanishes as $b^2$")
     _axes[1].legend(fontsize=7, loc="upper left")
 
-    # Panel 3: bounded product, with measured slope per probe in legend.
+    # Panel 3: bounded product, precomputed + live overlay + slopes.
     for _i, _lab in enumerate(_labels):
         _y = _pre[_i]
         _mask = _y > 0
         _slope_str = ("flat" if abs(_slopes[_i]) < 0.05
                       else f"slope {_slopes[_i]:+.2f}") if not np.isnan(_slopes[_i]) else "n/a"
-        _axes[2].loglog(_t[_mask], _y[_mask], linewidth=1.4,
+        _axes[2].loglog(_t[_mask], _y[_mask], linewidth=1.2, alpha=0.65,
                         label=f"{_lab}  ({_slope_str})")
+    _live_pre_mask = _pre_live > 0
+    if _live_pre_mask.sum() > 2 and (_pre_live[_fit_mask] > 0).all():
+        _live_slope = float(np.polyfit(np.log(_t[_fit_mask]),
+                                       np.log(_pre_live[_fit_mask]), 1)[0])
+        _live_lab = f"LIVE ({_ux:.2f}, {_uy:.2f})  slope {_live_slope:+.2f}"
+    else:
+        _live_lab = f"LIVE ({_ux:.2f}, {_uy:.2f})"
+    _axes[2].loglog(_t[_live_pre_mask], _pre_live[_live_pre_mask], "r-", linewidth=2.2,
+                    label=_live_lab)
+    if _live_pre_mask[_idx_mark]:
+        _axes[2].plot(_t_mark, _pre_live[_idx_mark], "ro",
+                      markersize=10, markeredgecolor="white", zorder=10)
     _axes[2].set_xlabel("t")
     _axes[2].set_ylabel(r"$\lambda(t)^2 \cdot \|\nabla\,\mathrm{integrand}\|$")
-    _axes[2].set_title("(3) bounded product  $\\approx$  flat over $t \\in [0.01, 0.5]$")
+    _axes[2].set_title("(3) bounded product")
     _axes[2].legend(fontsize=7, loc="upper right")
 
     _fig.suptitle(
-        "Singular gradient (1) and its conformal cancellation (2 → 3)",
+        "Singular gradient (1) and its conformal cancellation (2 → 3) "
+        "with live probe overlay",
         y=1.02, fontsize=12,
     )
     _fig.text(
         0.5, -0.02,
-        "Panel 1 diverges as 1 / b(t)^2; panel 2 vanishes at the same rate "
-        "(lambda^2 ~ b^2); panel 3 is the bounded product. Slope annotations "
-        "in panel 3 are log-log fits over t in [0.01, 0.5]; values near zero "
-        "confirm the cancellation. The curves bend up at t -> 1 because "
-        "lambda(t) = b + b^2/a inherits the FM singularity at a = 0.",
+        "Red curves track the live probe set on the 2D plane above. Red "
+        "dots mark the t value chosen on the t-marker slider. Slopes in "
+        "panel 3 are log-log fits over t in [0.01, 0.5]; values near zero "
+        "confirm the cancellation. Curves bend up at t -> 1 because "
+        "lambda = b + b^2/a inherits the FM singularity at a = 0.",
         ha="center", fontsize=8.5, style="italic",
     )
     _fig.tight_layout()
@@ -133,16 +210,24 @@ def _():
     if str(REPO_ROOT) not in _sys.path:
         _sys.path.insert(0, str(REPO_ROOT))
 
-    # The notebook consumes data/*.npz for figures and src.sympy_validation
-    # for the symbolic re-derivation cell. The rest of src/ is exercised by
-    # tests/ and scripts/precompute_arrays.py.
+    # The notebook consumes data/*.npz for figures, src.sympy_validation
+    # for the symbolic re-derivation cell, and src.exact_affine + the 2D-slider
+    # widget for the live-probe overlay on the lead figure. The rest of src/
+    # is exercised by tests/ and scripts/precompute_arrays.py.
+    from src.exact_affine import denoiser_discrete
+    from src.schedules import a_of_t, b_of_t
     from src.sympy_validation import (
         validate_noise_gain_divergence,
         validate_velocity_gain,
     )
+    from src.widgets.two_d_slider import TwoDSliderWidget
 
     return (
         REPO_ROOT,
+        TwoDSliderWidget,
+        a_of_t,
+        b_of_t,
+        denoiser_discrete,
         mo,
         np,
         plt,
@@ -967,7 +1052,7 @@ def _(REPO_ROOT, mo):
     if _manifest_path.exists():
         _manifest = _json.loads(_manifest_path.read_text())
         _entries = "\n".join(f"- `{_k}`: `{_v}`" for _k, _v in _manifest.items())
-        mo.md(
+        _provenance_md = mo.md(
             "### Data provenance\n\n"
             "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
             "with fixed seeds. The SHA-256 prefixes below are the committed "
@@ -976,11 +1061,12 @@ def _(REPO_ROOT, mo):
             + _entries
         )
     else:
-        mo.md(
+        _provenance_md = mo.md(
             "### Data provenance\n\n"
             "`data/manifest.json` not found. Run `python scripts/reproduce.py` "
             "to regenerate every `.npz` and write the manifest."
         )
+    _provenance_md
     return
 
 
