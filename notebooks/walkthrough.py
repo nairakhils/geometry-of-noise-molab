@@ -7,16 +7,18 @@ app = marimo.App(width="medium")
 @app.cell
 def _(mo):
     mo.md(r"""
-    # The Geometry of Noise: a closed-form walkthrough
+    # Singular gradients, conformal flows, and Fourier shrinkage
 
-    Sahraee-Ardakan, Delbracio & Milanfar (arXiv:2602.18428, February 2026)
-    show that an autonomous (noise-blind) generative model implicitly performs
-    Riemannian gradient flow on a marginal energy whose Euclidean gradient is
-    singular at every clean datum, and that a posterior-averaged conformal
-    factor cancels the singularity at exactly the rate it grows. We reproduce
-    that analytic story in closed form for $x \sim \mathcal{N}(0, \Sigma)$ in
-    two dimensions and add a Fourier-mode picture for isotropic 2D Gaussian
-    random fields that the paper does not draw.
+    *A closed-form reading of arXiv:2602.18428.*
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Akhil Nair  ·    ·  April 2026  ·
+    alphaXiv x marimo competition submission
     """)
     return
 
@@ -89,8 +91,10 @@ def _():
     if str(REPO_ROOT) not in _sys.path:
         _sys.path.insert(0, str(REPO_ROOT))
 
-    from src import exact_affine, grf_2d, schedules
-
+    # The notebook itself only consumes data/*.npz; the math layer in src/
+    # is exercised by tests/ and by scripts/precompute_arrays.py. To check
+    # the math layer is importable in this environment, run:
+    #   assert __import__("src.exact_affine") and __import__("src.grf_2d")
     return REPO_ROOT, mo, np, plt
 
 
@@ -249,37 +253,6 @@ def _(mo):
     $\sim b(t)$ that suppresses the singular kernel of $\nabla E_{\text{marg}}$
     at the same rate the singularity grows.
     """)
-    return
-
-
-@app.cell
-def _(mo, shrinkage):
-    n_t = len(shrinkage["t_values"])
-    t_slider = mo.ui.slider(
-        start=0, stop=n_t - 1, step=1, value=n_t // 2, label="t index"
-    )
-    t_slider
-    return (t_slider,)
-
-
-@app.cell
-def _(plt, shrinkage, t_slider):
-    _idx = int(t_slider.value)
-    _t_val = float(shrinkage["t_values"][_idx])
-    _centers = shrinkage["radial_centers"]
-
-    _fig, _ax = plt.subplots(figsize=(7.5, 4.2))
-    for _ns, _marker in zip([1, 2, 3], ["o", "s", "^"]):
-        _rad = shrinkage[f"shrinkage_radial_ns{_ns}"][_idx]
-        _ax.plot(_centers, _rad, _marker + "-", label=f"n_s = {_ns}")
-    _ax.set_xscale("log")
-    _ax.set_xlabel("k (radial wavenumber)")
-    _ax.set_ylabel("Wiener signal-fraction W(k, t)")
-    _ax.set_ylim(-0.02, 1.02)
-    _ax.set_title(f"per-mode shrinkage at t = {_t_val:.4f}")
-    _ax.legend()
-    _fig.tight_layout()
-    _fig
     return
 
 
@@ -460,10 +433,11 @@ def _(mo):
     measured radial slope agrees with the analytic $-n_s$ within $\pm 0.06$
     at $B = 512$ samples per $n_s$ (numbers in `docs/implementation_notes.md`).
 
-    **Extension result (shrinkage).** The interactive slider above and the
-    static heatmap below both show the per-mode Wiener signal-fraction
-    $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$. We plot the
-    signal-fraction $W$ rather than the Wiener gain
+    **Extension result (shrinkage).** The two sliders below select a noise
+    level $t$ and a spectral index $n_s \in \{1, 2, 3\}$, and the figure
+    panel re-renders the per-mode Wiener signal-fraction
+    $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$ accordingly. We
+    plot the signal-fraction $W$ rather than the Wiener gain
     $g = a \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$; the two differ by a factor
     of $a(t)$, and $W$ is the bounded $[0, 1]$ quantity that gives the
     variance fraction of $u_t$ at mode $k$ originating from signal. As
@@ -520,10 +494,26 @@ def _(gallery, plt):
 
 
 @app.cell
-def _(plt, shrinkage):
+def _(mo, shrinkage):
+    n_t = len(shrinkage["t_values"])
+    t_slider = mo.ui.slider(
+        start=0, stop=n_t - 1, step=1, value=n_t // 2, label="t index"
+    )
+    n_s_dropdown = mo.ui.dropdown(
+        options=["1", "2", "3"], value="2", label="spectral index n_s"
+    )
+    mo.vstack([t_slider, n_s_dropdown])
+    return n_s_dropdown, t_slider
+
+
+@app.cell
+def _(n_s_dropdown, plt, shrinkage, t_slider):
+    _ns = int(n_s_dropdown.value)
+    _idx = int(t_slider.value)
     _centers = shrinkage["radial_centers"]
     _t_vals = shrinkage["t_values"]
-    _rad = shrinkage["shrinkage_radial_ns2"]
+    _rad = shrinkage[f"shrinkage_radial_ns{_ns}"]
+    _t_now = float(_t_vals[_idx])
 
     _fig = plt.figure(figsize=(13, 4.6))
     _gs = _fig.add_gridspec(1, 3, width_ratios=[1.4, 1, 1])
@@ -536,16 +526,19 @@ def _(plt, shrinkage):
         vmin=0, vmax=1,
     )
     _ax0.set_yscale("log")
+    _ax0.axhline(_t_now, color="cyan", lw=1.0, alpha=0.85)
     _ax0.set_xlabel("k"); _ax0.set_ylabel("t")
-    _ax0.set_title("W(k, t) for n_s = 2")
+    _ax0.set_title(f"W(k, t) for n_s = {_ns}")
     plt.colorbar(_im, ax=_ax0, label="W")
 
     _ax1 = _fig.add_subplot(_gs[0, 1])
-    for _i in [3, 10, 16]:
-        _ax1.plot(_centers, _rad[_i], "o-", label=f"t = {float(_t_vals[_i]):.3f}")
+    for _ns_overlay, _marker in zip([1, 2, 3], ["o", "s", "^"]):
+        _row = shrinkage[f"shrinkage_radial_ns{_ns_overlay}"][_idx]
+        _ax1.plot(_centers, _row, _marker + "-",
+                  label=f"n_s = {_ns_overlay}", alpha=0.85)
     _ax1.set_xlabel("k"); _ax1.set_ylabel("W")
     _ax1.set_xscale("log"); _ax1.set_ylim(-0.02, 1.02)
-    _ax1.set_title("slice at fixed t")
+    _ax1.set_title(f"slice at t = {_t_now:.4f}")
     _ax1.legend(fontsize=8)
 
     _ax2 = _fig.add_subplot(_gs[0, 2])
@@ -555,7 +548,7 @@ def _(plt, shrinkage):
                       label=f"k = {float(_centers[_j]):.1f}")
     _ax2.set_xlabel("t"); _ax2.set_ylabel("W")
     _ax2.set_xscale("log"); _ax2.set_ylim(-0.02, 1.02)
-    _ax2.set_title("slice at fixed k")
+    _ax2.set_title(f"slice at fixed k  (n_s = {_ns})")
     _ax2.legend(fontsize=8)
 
     _fig.tight_layout()
@@ -656,7 +649,7 @@ def _(mo):
     unified affine-schedule formulation $u_t = a(t) x + b(t) \epsilon$ used
     throughout.
 
-    [3] Lipman, Y., Chen, R. T. Q., Ben-Hamou, H., Nickel, M., Le, M.
+    [3] Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., Le, M.
     *Flow Matching for Generative Modeling.* arXiv:2210.02747, 2023. Source
     of the linear schedule $a(t) = 1 - t,\,b(t) = t$ adopted here.
 
