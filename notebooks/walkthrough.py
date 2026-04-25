@@ -1215,8 +1215,7 @@ def _(mo):
     - **[4]** Wang, R., Du, Y. *Equilibrium Matching: Generative Modeling with Implicit Energy-Based Models.* arXiv:2510.02300, 2025.
     - **[5]** Salimans, T., Ho, J. *Progressive Distillation for Fast Sampling of Diffusion Models.* ICLR 2022.
 
-    Source: `geometry-of-noise-molab/`. See `docs/paper_summary.md` and
-    `docs/implementation_notes.md` for the equation extraction and numerical caveats.
+    Source: `geometry-of-noise-molab/`.  
 
     [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
     """)
