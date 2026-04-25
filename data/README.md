@@ -53,6 +53,9 @@ For each n_s in {1, 2, 3}:
 - `reverse_trajectory`             (51, 32, 32)  exact-flow fields
 - `reverse_strip_t_values`         (4,)        sub-sampled t indices matching forward
 - `reverse_strip`                  (4, 32, 32) trajectory frames at those indices
+- `forward_at_traj_t`              (51, 32, 32) forward fields sampled at the
+                                                  reverse-trajectory t values,
+                                                  using the same shared eps draw
 - `n_s`, `N`, `n_steps`            metadata
 
 ## shrinkage_heatmap.npz   (N = 64)

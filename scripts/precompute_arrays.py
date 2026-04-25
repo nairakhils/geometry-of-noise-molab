@@ -276,6 +276,14 @@ def precompute_grf_flow_strip(rng: np.random.Generator) -> None:
         n_steps=n_steps, n_s=n_s, sigma2=sigma2,
     )
 
+    # Forward corruption at every t along the reverse trajectory, sharing the
+    # same eps_real -- gives the live widget a paired forward/reverse view at
+    # every step without inflating the npz size noticeably.
+    forward_at_traj = np.stack(
+        [forward_corrupt(clean, t=float(t), eps_real=eps_real) for t in t_traj],
+        axis=0,
+    )
+
     # Pull the trajectory frames whose t most closely match forward_t.
     idx = np.array([int(np.argmin(np.abs(t_traj - float(t)))) for t in forward_t])
     reverse_strip_t = t_traj[idx]
@@ -289,6 +297,7 @@ def precompute_grf_flow_strip(rng: np.random.Generator) -> None:
         reverse_trajectory=traj.astype(np.float32),
         reverse_strip_t_values=reverse_strip_t,
         reverse_strip=reverse_strip.astype(np.float32),
+        forward_at_traj_t=forward_at_traj.astype(np.float32),
         n_s=np.asarray(n_s),
         N=np.asarray(N),
         n_steps=np.asarray(n_steps),
@@ -403,6 +412,9 @@ For each n_s in {1, 2, 3}:
 - `reverse_trajectory`             (51, 32, 32)  exact-flow fields
 - `reverse_strip_t_values`         (4,)        sub-sampled t indices matching forward
 - `reverse_strip`                  (4, 32, 32) trajectory frames at those indices
+- `forward_at_traj_t`              (51, 32, 32) forward fields sampled at the
+                                                  reverse-trajectory t values,
+                                                  using the same shared eps draw
 - `n_s`, `N`, `n_steps`            metadata
 
 ## shrinkage_heatmap.npz   (N = 64)

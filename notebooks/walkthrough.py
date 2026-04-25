@@ -583,45 +583,154 @@ def _(mo):
 
 
 @app.cell
-def _(grf_flow_strip, np, plt):
-    _clean = grf_flow_strip["clean_field"]
-    _fwd_t = grf_flow_strip["forward_t_values"]
-    _fwd = grf_flow_strip["forward_fields"]
-    _rev_t = grf_flow_strip["reverse_strip_t_values"]
-    _rev = grf_flow_strip["reverse_strip"]
+def _(grf_flow_strip, np):
+    flow_clean = grf_flow_strip["clean_field"]
+    flow_traj = grf_flow_strip["reverse_trajectory"]
+    flow_traj_t = grf_flow_strip["reverse_t_values"]
+    flow_fwd_at_traj = grf_flow_strip["forward_at_traj_t"]
+    flow_strip_t = grf_flow_strip["reverse_strip_t_values"]
+    flow_strip_rev = grf_flow_strip["reverse_strip"]
+    flow_strip_fwd = grf_flow_strip["forward_fields"]
 
-    _vmax = float(np.max(np.abs(_clean)))
-    _fig, _axes = plt.subplots(2, 4, figsize=(13, 6.4))
+    flow_n_steps = int(flow_traj.shape[0])
+    flow_vmax = float(np.max(np.abs(flow_clean)))
+    return (
+        flow_clean,
+        flow_fwd_at_traj,
+        flow_n_steps,
+        flow_strip_fwd,
+        flow_strip_rev,
+        flow_strip_t,
+        flow_traj,
+        flow_traj_t,
+        flow_vmax,
+    )
+
+
+@app.cell
+def _(flow_n_steps, mo):
+    flow_step_slider = mo.ui.slider(
+        start=0, stop=flow_n_steps - 1, step=1, value=0, label="reverse step"
+    )
+    flow_play_speed = mo.ui.refresh(
+        options=["off", "0.5s", "0.25s"], default_interval="off", label="auto-play"
+    )
+    mo.hstack([flow_step_slider, flow_play_speed], justify="start")
+    return flow_play_speed, flow_step_slider
+
+
+@app.cell
+def _(mo):
+    get_flow_step, set_flow_step = mo.state(0)
+    return get_flow_step, set_flow_step
+
+
+@app.cell
+def _(
+    flow_n_steps,
+    flow_play_speed,
+    flow_step_slider,
+    get_flow_step,
+    set_flow_step,
+):
+    # Subscribe to the refresh's value so this cell re-runs on every tick.
+    _refresh_value = flow_play_speed.value
+    _is_playing = _refresh_value not in ("off", None)
+    if _is_playing:
+        set_flow_step((get_flow_step() + 1) % flow_n_steps)
+    elif flow_step_slider.value != get_flow_step():
+        set_flow_step(int(flow_step_slider.value))
+    return
+
+
+@app.cell
+def _(flow_fwd_at_traj, flow_traj, flow_traj_t, flow_vmax, get_flow_step, mo):
+    import plotly.graph_objects as _go
+    from plotly.subplots import make_subplots as _make_subplots
+
+    _idx = int(get_flow_step())
+    _t_now = float(flow_traj_t[_idx])
+
+    _fig_live = _make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(
+            f"forward U_t at t = {_t_now:.4f}",
+            f"reverse flow at t = {_t_now:.4f}",
+        ),
+        horizontal_spacing=0.08,
+    )
+    _fig_live.add_trace(
+        _go.Heatmap(
+            z=flow_fwd_at_traj[_idx], colorscale="RdBu_r",
+            zmin=-flow_vmax, zmax=flow_vmax, showscale=False,
+            hovertemplate="i=%{y} j=%{x}<br>U_t=%{z:.3f}<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+    _fig_live.add_trace(
+        _go.Heatmap(
+            z=flow_traj[_idx], colorscale="RdBu_r",
+            zmin=-flow_vmax, zmax=flow_vmax, showscale=True,
+            hovertemplate="i=%{y} j=%{x}<br>U_rev=%{z:.3f}<extra></extra>",
+            colorbar=dict(thickness=10, len=0.85),
+        ),
+        row=1, col=2,
+    )
+    _fig_live.update_xaxes(showticklabels=False, scaleanchor="y", constrain="domain")
+    _fig_live.update_yaxes(showticklabels=False, autorange="reversed")
+    _fig_live.update_layout(
+        height=380, width=820,
+        margin=dict(l=20, r=20, t=50, b=20),
+        paper_bgcolor="white", plot_bgcolor="white",
+    )
+    mo.ui.plotly(_fig_live)
+    return
+
+
+@app.cell
+def _(
+    flow_clean,
+    flow_strip_fwd,
+    flow_strip_rev,
+    flow_strip_t,
+    flow_vmax,
+    grf_flow_strip,
+    mo,
+    np,
+    plt,
+):
+    _fwd_t_static = grf_flow_strip["forward_t_values"]
+    _fig_static, _axes = plt.subplots(2, 4, figsize=(13, 6.4))
 
     for _j in range(4):
         _ax = _axes[0, _j]
-        _ax.imshow(_fwd[_j], cmap="RdBu_r", vmin=-_vmax, vmax=_vmax)
+        _ax.imshow(flow_strip_fwd[_j], cmap="RdBu_r",
+                   vmin=-flow_vmax, vmax=flow_vmax)
         _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
-        _ax.set_title(f"forward, t = {float(_fwd_t[_j]):.3f}", fontsize=10)
+        _ax.set_title(f"forward, t = {float(_fwd_t_static[_j]):.3f}", fontsize=10)
 
-    # Bottom row: read right-to-left so the visual is "motion back toward t=0".
+    # Bottom row read right-to-left so the visual is "motion back toward t=0".
     _rev_order = list(range(3, -1, -1))
     for _col, _src in enumerate(_rev_order):
         _ax = _axes[1, _col]
-        _ax.imshow(_rev[_src], cmap="RdBu_r", vmin=-_vmax, vmax=_vmax)
+        _ax.imshow(flow_strip_rev[_src], cmap="RdBu_r",
+                   vmin=-flow_vmax, vmax=flow_vmax)
         _ax.set_xticks([]); _ax.set_yticks([]); _ax.grid(False)
-        _ax.set_title(f"reverse, t = {float(_rev_t[_src]):.3f}", fontsize=10)
+        _ax.set_title(f"reverse, t = {float(flow_strip_t[_src]):.3f}", fontsize=10)
 
     _axes[0, 0].set_ylabel("forward", fontsize=11)
     _axes[1, 0].set_ylabel("reverse", fontsize=11)
-    _fig.suptitle(
-        "One clean GRF, one forward noise draw, exact closed-form reverse flow",
-        y=1.00, fontsize=12,
+    _fig_static.tight_layout()
+
+    mo.accordion(
+        {
+            "Static snapshot at t in [0.05, 0.2, 0.5, 0.8]  (fallback for PDF / static export)":
+            _fig_static
+        }
     )
-    _fig.text(
-        0.5, -0.01,
-        "Top row: U_t = a(t) X + b(t) eps with the same eps shared across t. "
-        "Bottom row: exact reverse flow from the t=0.8 corrupted field, sampled "
-        "at the same four t values and read right-to-left.",
-        ha="center", fontsize=8.5, style="italic",
-    )
-    _fig.tight_layout()
-    _fig
+    # silence unused-name warnings for variables only consumed via the
+    # accordion's matplotlib payload
+    _ = (flow_clean, np)
     return
 
 
