@@ -234,49 +234,94 @@ def _(mo):
     mo.md(r"""
     Same geometry on smooth Gaussian data for comparison: with no Dirac
     atoms in $p(x)$, neither field is singular, but the conformal
-    preconditioner still reshapes the flow.
+    preconditioner still reshapes the flow. Hover over either panel for
+    exact $(u_1, u_2, \text{value})$ readouts; pan and zoom each panel
+    independently.
     """)
     return
 
 
 @app.cell
-def _(energy, np, plt):
+def _(energy, mo):
+    import plotly.figure_factory as _pff
+    import plotly.graph_objects as _go
+    from plotly.subplots import make_subplots as _make_subplots
+
     _u = energy["u_grid"]
     _E = energy["E_marg_grid"]
     _Gr = energy["grad_raw_grid"]
     _Gp = energy["grad_preconditioned_grid"]
-    _extent = [
-        float(_u[0, 0, 0]),
-        float(_u[-1, 0, 0]),
-        float(_u[0, 0, 1]),
-        float(_u[0, -1, 1]),
-    ]
+    _Lam = energy["conformal_factor_grid"]
 
-    _fig, _axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    # 1D coordinate axes (u_grid is built with indexing='ij' so axis 0 is u_1)
+    _xs = _u[:, 0, 0]
+    _ys = _u[0, :, 1]
 
-    _im = _axes[0].imshow(_E.T, origin="lower", extent=_extent, cmap="viridis")
-    _axes[0].streamplot(
-        _u[:, :, 0].T, _u[:, :, 1].T,
-        _Gr[..., 0].T, _Gr[..., 1].T,
-        density=1.1, color="white", linewidth=0.7, arrowsize=0.7,
+    # Streamlines on a 60x60 view of the 120x120 grid: cuts trace size in half
+    # without losing visual fidelity. Heatmaps stay at 120x120.
+    _stride = 2
+    _xs_s = _xs[::_stride]
+    _ys_s = _ys[::_stride]
+    _Gr_x = _Gr[::_stride, ::_stride, 0].T
+    _Gr_y = _Gr[::_stride, ::_stride, 1].T
+    _Gp_x = _Gp[::_stride, ::_stride, 0].T
+    _Gp_y = _Gp[::_stride, ::_stride, 1].T
+
+    _stream_left = _pff.create_streamline(
+        _xs_s, _ys_s, _Gr_x, _Gr_y, density=1.0, arrow_scale=0.05,
+    ).data[0]
+    _stream_left.line.color = "white"
+    _stream_left.line.width = 1.0
+    _stream_left.showlegend = False
+    _stream_left.hoverinfo = "skip"
+
+    _stream_right = _pff.create_streamline(
+        _xs_s, _ys_s, _Gp_x, _Gp_y, density=1.0, arrow_scale=0.05,
+    ).data[0]
+    _stream_right.line.color = "black"
+    _stream_right.line.width = 1.0
+    _stream_right.showlegend = False
+    _stream_right.hoverinfo = "skip"
+
+    _fig_eng = _make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(
+            "E_marg(u)  +  raw gradient streamlines",
+            "lambda_bar(u)  +  preconditioned field",
+        ),
+        horizontal_spacing=0.12,
     )
-    _axes[0].set_title("E_marg(u) + raw gradient streamlines")
-    _axes[0].set_xlabel("u_1"); _axes[0].set_ylabel("u_2")
-    plt.colorbar(_im, ax=_axes[0], label="E_marg")
-
-    _norm = np.linalg.norm(_Gp, axis=-1)
-    _axes[1].streamplot(
-        _u[:, :, 0].T, _u[:, :, 1].T,
-        _Gp[..., 0].T, _Gp[..., 1].T,
-        density=1.1, color=_norm.T, cmap="magma", linewidth=0.9,
+    _fig_eng.add_trace(
+        _go.Heatmap(
+            x=_xs, y=_ys, z=_E.T,
+            colorscale="Viridis",
+            colorbar=dict(title="E_marg", x=0.44, thickness=10, len=0.85),
+            hovertemplate="u_1=%{x:.2f}  u_2=%{y:.2f}  E_marg=%{z:.3f}<extra></extra>",
+        ),
+        row=1, col=1,
     )
-    _axes[1].set_title("preconditioned autonomous field f*(u) = lambda_bar * grad E_marg")
-    _axes[1].set_xlabel("u_1"); _axes[1].set_ylabel("u_2")
-    _axes[1].set_xlim(_extent[0], _extent[1])
-    _axes[1].set_ylim(_extent[2], _extent[3])
+    _fig_eng.add_trace(_stream_left, row=1, col=1)
 
-    _fig.tight_layout()
-    _fig
+    _fig_eng.add_trace(
+        _go.Heatmap(
+            x=_xs, y=_ys, z=_Lam.T,
+            colorscale="Magma",
+            colorbar=dict(title="lambda_bar", x=1.02, thickness=10, len=0.85),
+            hovertemplate="u_1=%{x:.2f}  u_2=%{y:.2f}  lambda_bar=%{z:.3f}<extra></extra>",
+        ),
+        row=1, col=2,
+    )
+    _fig_eng.add_trace(_stream_right, row=1, col=2)
+
+    _fig_eng.update_xaxes(title_text="u_1", scaleanchor="y", constrain="domain")
+    _fig_eng.update_yaxes(title_text="u_2")
+    _fig_eng.update_layout(
+        height=460, width=960,
+        margin=dict(l=40, r=60, t=50, b=40),
+        paper_bgcolor="white", plot_bgcolor="white",
+    )
+
+    mo.ui.plotly(_fig_eng)
     return
 
 
