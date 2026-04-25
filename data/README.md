@@ -51,6 +51,8 @@ For each n_s in {1, 2, 3}:
 For each n_s in {1, 2, 3}:
 - `shrinkage_ns{1,2,3}`            (20, 64, 64) Wiener signal fraction a^2 sigma^2 / (a^2 sigma^2 + b^2)
 - `shrinkage_radial_ns{1,2,3}`     (20, 31)     radially averaged per t
+- `k_c_curves`                     (20, 3)      half-power cutoff k_c(t, n_s) for n_s in (1, 2, 3)
+- `k_c_n_s_list`                   (3,)         the n_s values matching k_c_curves columns
 
 ## linear_score_fit.npz   (produced by scripts/linear_score_fit.py, not this script)
 Sanity check: OLS recovers the closed-form Wiener matrix on N(0, Sigma) data.

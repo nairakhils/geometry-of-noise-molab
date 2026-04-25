@@ -462,11 +462,16 @@ def _(mo):
 
     **Extension result (shrinkage).** The interactive slider above and the
     static heatmap below both show the per-mode Wiener signal-fraction
-    $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$. As $t \to 0$,
-    $W \to 1$ for every mode, recovering the data; at intermediate $t$ the
-    high-$k$ modes fall toward $0$ first because their signal-to-noise ratio
-    drops fastest. This is the per-mode picture of the same Wiener
-    preconditioning that $\bar\lambda(u)$ implements globally.
+    $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$. We plot the
+    signal-fraction $W$ rather than the Wiener gain
+    $g = a \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$; the two differ by a factor
+    of $a(t)$, and $W$ is the bounded $[0, 1]$ quantity that gives the
+    variance fraction of $u_t$ at mode $k$ originating from signal. As
+    $t \to 0$, $W \to 1$ for every mode, recovering the data; at
+    intermediate $t$ the high-$k$ modes fall toward $0$ first because their
+    signal-to-noise ratio drops fastest. This is the per-mode picture of
+    the same Wiener preconditioning that $\bar\lambda(u)$ implements
+    globally.
     """)
     return
 
@@ -553,6 +558,50 @@ def _(plt, shrinkage):
     _ax2.set_title("slice at fixed k")
     _ax2.legend(fontsize=8)
 
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### Half-power cutoff $k_c(t, n_s)$
+
+    The half-power cutoff $k_c(t, n_s)$ is the radial wavenumber at which
+    the per-mode signal-fraction $W$ drops to $1/2$. Setting
+    $W = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2) = 1/2$ with
+    $\sigma_k^2 \propto k^{-n_s}$ collapses to $a^2 \sigma_k^2 = b^2$,
+    so $k_c(t, n_s) = (a(t) / b(t))^{2 / n_s}$ in closed form.
+    The autonomous flow preserves modes with $k < k_c$ at noise level $t$
+    and is dominated by noise above $k_c$, so $k_c(t)$ traces the moving
+    boundary between signal and noise as $t$ varies.
+    """)
+    return
+
+
+@app.cell
+def _(plt, shrinkage):
+    _t = shrinkage["t_values"]
+    _kc = shrinkage["k_c_curves"]
+    _ns_list = shrinkage["k_c_n_s_list"]
+
+    _fig, _ax = plt.subplots(figsize=(8.0, 4.6))
+    _cmap = plt.get_cmap("viridis")
+    for _j, _ns in enumerate(_ns_list):
+        _color = _cmap(_j / max(len(_ns_list) - 1, 1))
+        _ax.loglog(_t, _kc[:, _j], "o-", color=_color, linewidth=1.6,
+                   label=fr"$n_s = {int(_ns)}$:  $(a/b)^{{2/{int(_ns)}}}$")
+    _ax.set_xlabel("t")
+    _ax.set_ylabel(r"$k_c(t, n_s)$")
+    _ax.set_title("Half-power cutoff $k_c(t, n_s)$")
+    _ax.legend()
+    _fig.text(
+        0.5, -0.02,
+        "Solid lines are the closed form k_c = (a/b)^(2/n_s). "
+        "Steeper spectra (larger n_s) keep more high-k structure as the noise level grows.",
+        ha="center", fontsize=8.5, style="italic",
+    )
     _fig.tight_layout()
     _fig
     return

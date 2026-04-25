@@ -70,6 +70,29 @@ def measure_psd_radial(
     return centers, P_k
 
 
+def half_power_cutoff(t, n_s: float, schedule=None) -> NDArray[np.float64]:
+    """Radial wavenumber k_c at which the per-mode signal-fraction W drops to 1/2.
+
+    With W(k, t) = a^2 sigma_k^2 / (a^2 sigma_k^2 + b^2) and
+    sigma_k^2 = k^{-n_s}, setting W = 1/2 yields a^2 sigma_k^2 = b^2, hence
+
+        k_c(t, n_s) = (a(t) / b(t)) ** (2 / n_s).
+
+    Diverges to +inf as b(t) -> 0 (every mode preserved at zero noise) and
+    falls to 0 as a(t) -> 0 (no mode preserved when the signal is gone).
+    """
+    t = np.asarray(t, dtype=np.float64)
+    if schedule is None:
+        a = a_of_t(t)
+        b = b_of_t(t)
+    else:
+        a, b = schedule(t)
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    safe_b = np.where(b > 0, b, np.finfo(np.float64).tiny)
+    return np.where(b > 0, (a / safe_b) ** (2.0 / float(n_s)), np.inf)
+
+
 def exact_shrinkage_per_mode(N: int, n_s: float, t: float, schedule=None) -> NDArray[np.float64]:
     """Per-mode Wiener signal-fraction W(k, t) = a^2 sigma_k^2 / (a^2 sigma_k^2 + b^2).
 
