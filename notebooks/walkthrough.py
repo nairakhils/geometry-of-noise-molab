@@ -318,13 +318,18 @@ def _(mo):
     pairs by ordinary least squares and compare to the closed forms
 
     $$A_{\epsilon}(t) = b(t)\,M(t)^{-1},\qquad
-      A_v(t) = a(t)\,b(t)\,(I - \Sigma)\,M(t)^{-1},$$
+      A_v(t) = \bigl(\dot a(t)\,a(t)\,\Sigma + \dot b(t)\,b(t)\,I\bigr)
+                M(t)^{-1},$$
 
-    using $N = 2 \times 10^5$ samples per $t$. The relative Frobenius error
-    tracks the OLS sampling-noise floor $\sim 1/\sqrt{N}$ rather than reaching
-    machine precision. That decay rate is the diagnostic: it confirms that
-    the forward process, the schedule, and the conditional-mean derivation
-    in `src/exact_affine.py` agree with each other. No neural network is
+    where the velocity target is $v = \dot u = \dot a(t)\,x + \dot b(t)\,
+    \epsilon$ (paper Eq. 61). On the FM linear schedule
+    $(\dot a, \dot b) = (-1, 1)$, so $A_v(t) = (b(t)\,I - a(t)\,\Sigma)\,
+    M(t)^{-1}$. With $N = 2 \times 10^5$ samples per $t$, the relative
+    Frobenius error tracks the OLS sampling-noise floor $\sim 1/\sqrt{N}$
+    rather than reaching machine precision. That decay rate is the
+    diagnostic: it confirms that the forward process, the schedule, the
+    schedule derivatives, and the conditional-mean derivation in
+    `src/exact_affine.py` agree with each other. No neural network is
     fitted; OLS on a closed-form linear estimator is the only learning step
     in this notebook. The full numerics are recorded in
     `docs/implementation_notes.md`.
@@ -526,11 +531,10 @@ def _(mo):
     field architecture whose stability analysis the paper [1] formalizes.
 
     [5] Salimans, T., Ho, J. *Progressive Distillation for Fast Sampling of
-    Diffusion Models.* ICLR 2022. Source of the velocity convention
-    $v = \alpha_t\,\epsilon - \sigma_t\,x$ used by `velocity_target` in
-    `src/exact_affine.py`. Note that the paper [1] uses a different velocity
-    convention, $v = \dot u$; see `docs/paper_summary.md` (f) for the
-    reconciliation.
+    Diffusion Models.* ICLR 2022. An alternative velocity convention,
+    $v = \alpha_t\,\epsilon - \sigma_t\,x$, retained for reference as
+    `velocity_target_SH` in `src/exact_affine.py` but not used in any
+    figure or stability claim in this notebook.
 
     The full source for this notebook is at `geometry-of-noise-molab/`. See
     `docs/paper_summary.md` for the equation-by-equation extraction and

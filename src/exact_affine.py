@@ -198,18 +198,40 @@ def conditional_mean_eps_given_u_t(u: ArrayLike, t: ArrayLike, Sigma: ArrayLike)
     return b * ((y / m_eig) @ V.T)
 
 
-def velocity_target(u: ArrayLike, t: ArrayLike, Sigma: ArrayLike) -> NDArray[np.float64]:
-    """v = alpha(t) eps - sigma(t) x, evaluated at conditional means.
+def velocity_target_paper(u: ArrayLike, t: ArrayLike, Sigma: ArrayLike) -> NDArray[np.float64]:
+    """E[v | u, t] for v = du/dt under the affine schedule (paper Eq. 61).
 
-    Salimans-Ho velocity convention with alpha(t) = a(t), sigma(t) = b(t).
-    NOTE: this differs from the paper's own velocity definition v = u_dot
-    (Eq. 61); see docs/paper_summary.md (f).
+    With u_t = a(t) x + b(t) eps, the time derivative is
+    v = a_dot(t) x + b_dot(t) eps. Taking the posterior mean given u, t:
+
+        E[v | u, t] = a_dot(t) * E[x | u, t] + b_dot(t) * E[eps | u, t].
+
+    For FM-linear (a_dot = -1, b_dot = 1) this collapses to E[eps - x | u, t].
+    This is the velocity object the paper's stability theorem is about.
+    """
+    a_dot = float(np.asarray(adot_of_t(t)))
+    b_dot = float(np.asarray(bdot_of_t(t)))
+    x_hat = conditional_mean_x_given_u_t(u, t, Sigma)
+    eps_hat = conditional_mean_eps_given_u_t(u, t, Sigma)
+    return a_dot * x_hat + b_dot * eps_hat
+
+
+def velocity_target_SH(u: ArrayLike, t: ArrayLike, Sigma: ArrayLike) -> NDArray[np.float64]:
+    """E[v_SH | u, t] for v_SH = alpha(t) eps - sigma(t) x (Salimans & Ho, ICLR 2022).
+
+    Kept for reference. NOT what the paper's stability theorem analyzes; that
+    role is played by `velocity_target_paper`. With alpha = a, sigma = b
+    (FM-linear), this gives E[v_SH] = a * E[eps] - b * E[x].
     """
     a = float(np.asarray(a_of_t(t)))
     b = float(np.asarray(b_of_t(t)))
     x_hat = conditional_mean_x_given_u_t(u, t, Sigma)
     eps_hat = conditional_mean_eps_given_u_t(u, t, Sigma)
     return a * eps_hat - b * x_hat
+
+
+# Default velocity convention: the paper's v = du/dt.
+velocity_target = velocity_target_paper
 
 
 def effective_gain_noise_pred(t: ArrayLike) -> NDArray[np.float64]:
@@ -269,10 +291,14 @@ def jensen_gap(
         D, V = _eig_sigma(Sigma)
         a = a_of_t(t_grid)
         b = b_of_t(t_grid)
+        a_dot = adot_of_t(t_grid)
+        b_dot = bdot_of_t(t_grid)
         m_eig = (a * a)[:, None] * D[None, :] + (b * b)[:, None]
         y = u @ V
-        # v_tau(u) per-mode (eigenbasis): a*b*(1 - D)*y / m
-        v_y = (a * b)[:, None] * (1.0 - D)[None, :] * (y[..., None, :] / m_eig)
+        # paper convention: E[v|u] = a_dot E[x|u] + b_dot E[eps|u]
+        # in eigenbasis: per-mode coefficient = (a_dot * a * D + b_dot * b) / m
+        v_coef = (a_dot * a)[:, None] * D[None, :] + (b_dot * b)[:, None]
+        v_y = v_coef * (y[..., None, :] / m_eig)
         v_orig = np.einsum("...td,jd->...tj", v_y, V)
         v_mean = np.einsum("...t,...td->...d", posterior, v_orig)
         diff = v_orig - v_mean[..., None, :]

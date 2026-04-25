@@ -12,8 +12,10 @@ from src.exact_affine import (
     marginal_cov,
     posterior_t_given_u,
     velocity_target,
+    velocity_target_paper,
+    velocity_target_SH,
 )
-from src.schedules import a_of_t, b_of_t
+from src.schedules import a_of_t, adot_of_t, b_of_t, bdot_of_t
 
 
 SIGMA = np.diag([2.0, 0.5])
@@ -89,3 +91,52 @@ def test_velocity_target_linear_in_u():
     v2 = velocity_target(u2, t, SIGMA)
     v_combo = velocity_target(alpha * u1 + beta * u2, t, SIGMA)
     assert np.allclose(v_combo, alpha * v1 + beta * v2, atol=1e-10)
+
+
+def test_velocity_target_default_is_paper_convention():
+    """`velocity_target` must alias `velocity_target_paper`, not the SH form."""
+    rng = np.random.default_rng(11)
+    t = 0.37
+    u = rng.standard_normal(2)
+    assert np.allclose(velocity_target(u, t, SIGMA),
+                       velocity_target_paper(u, t, SIGMA), atol=0.0)
+
+
+@pytest.mark.parametrize("t", [0.1, 0.4, 0.7, 0.9])
+def test_velocity_target_paper_matches_a_dot_x_plus_b_dot_eps(t):
+    """E[v|u,t] = a_dot * E[x|u,t] + b_dot * E[eps|u,t] (Eq. 61, posterior averaged)."""
+    rng = np.random.default_rng(12)
+    u = rng.standard_normal(2)
+    a_dot = float(adot_of_t(t))
+    b_dot = float(bdot_of_t(t))
+    expected = a_dot * conditional_mean_x_given_u_t(u, t, SIGMA) \
+        + b_dot * conditional_mean_eps_given_u_t(u, t, SIGMA)
+    got = velocity_target_paper(u, t, SIGMA)
+    assert np.allclose(got, expected, atol=1e-10)
+
+
+@pytest.mark.parametrize("t", [0.1, 0.4, 0.7, 0.9])
+def test_velocity_target_paper_collapses_to_eps_minus_x_on_FM(t):
+    """For FM linear (a_dot=-1, b_dot=1), v_paper = eps - x in expectation."""
+    rng = np.random.default_rng(13)
+    u = rng.standard_normal(2)
+    expected = conditional_mean_eps_given_u_t(u, t, SIGMA) \
+        - conditional_mean_x_given_u_t(u, t, SIGMA)
+    got = velocity_target_paper(u, t, SIGMA)
+    assert np.allclose(got, expected, atol=1e-10)
+
+
+def test_velocity_target_SH_still_uses_alpha_eps_minus_sigma_x():
+    """The SH form is preserved for reference and gives a different vector."""
+    rng = np.random.default_rng(14)
+    t = 0.6
+    u = rng.standard_normal(2)
+    a = float(a_of_t(t))
+    b = float(b_of_t(t))
+    expected = a * conditional_mean_eps_given_u_t(u, t, SIGMA) \
+        - b * conditional_mean_x_given_u_t(u, t, SIGMA)
+    got = velocity_target_SH(u, t, SIGMA)
+    assert np.allclose(got, expected, atol=1e-10)
+    # And confirm the two conventions disagree (sanity check on the bug fix).
+    assert not np.allclose(velocity_target_SH(u, t, SIGMA),
+                           velocity_target_paper(u, t, SIGMA), atol=1e-3)

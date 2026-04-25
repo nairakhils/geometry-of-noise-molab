@@ -5,12 +5,15 @@ optimal noise-prediction estimator is linear in u:
 
     E[eps | u, t] = b(t) M(t)^{-1} u                       (matrix A_eps(t))
 
-The Salimans-Ho velocity v = a(t) eps - b(t) x has
+The paper's velocity v = du/dt = a_dot(t) x + b_dot(t) eps has
 
-    E[v | u, t] = a(t) b(t) (I - Sigma) M(t)^{-1} u        (matrix A_v(t))
+    E[v | u, t] = (a_dot(t) a(t) Sigma + b_dot(t) b(t) I) M(t)^{-1} u
+                                                            (matrix A_v(t))
 
-(by the joint-Gaussian formula Cov(v, u) M^{-1} u; cross-covariance
-Cov(v, u) = a*b*(I - Sigma)).
+(direct combination of the conditional means, since the joint of (x, eps, u)
+is Gaussian and the linear map is just the differentiated forward process).
+On the FM linear schedule (a_dot=-1, b_dot=1) this simplifies to
+A_v = (b I - a Sigma) M^{-1} = (t I - (1-t) Sigma) M^{-1}.
 
 If the forward process, the schedule, and the conditional-mean derivation in
 src/exact_affine.py all agree with each other, OLS on enough (u, target)
@@ -28,7 +31,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.schedules import a_of_t, b_of_t
+from src.schedules import a_of_t, adot_of_t, b_of_t, bdot_of_t
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -50,11 +53,14 @@ def exact_A_eps(t: float, Sigma: np.ndarray) -> np.ndarray:
 
 
 def exact_A_v(t: float, Sigma: np.ndarray) -> np.ndarray:
+    """A_v(t) = (a_dot * a * Sigma + b_dot * b * I) M(t)^{-1}  (paper convention)."""
     a = float(a_of_t(t))
     b = float(b_of_t(t))
+    a_dot = float(adot_of_t(t))
+    b_dot = float(bdot_of_t(t))
     d = Sigma.shape[0]
     M = a * a * Sigma + b * b * np.eye(d)
-    return a * b * (np.eye(d) - Sigma) @ np.linalg.inv(M)
+    return (a_dot * a * Sigma + b_dot * b * np.eye(d)) @ np.linalg.inv(M)
 
 
 def fit_one(
@@ -62,12 +68,14 @@ def fit_one(
 ) -> tuple[np.ndarray, np.ndarray]:
     a = float(a_of_t(t))
     b = float(b_of_t(t))
+    a_dot = float(adot_of_t(t))
+    b_dot = float(bdot_of_t(t))
     d = Sigma.shape[0]
     L = np.linalg.cholesky(Sigma)
     x = rng.standard_normal((n_samples, d)) @ L.T
     eps = rng.standard_normal((n_samples, d))
     u = a * x + b * eps
-    v = a * eps - b * x
+    v = a_dot * x + b_dot * eps  # paper convention v = du/dt
 
     coef_eps, *_ = np.linalg.lstsq(u, eps, rcond=None)
     coef_v, *_ = np.linalg.lstsq(u, v, rcond=None)

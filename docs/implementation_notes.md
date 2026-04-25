@@ -95,7 +95,7 @@ trustworthy at least over `n_s ∈ {1, 2, 3}`; we did not probe outside that.
 | `grad_E_marg_numeric` | 5 | Vectorized central differences — used as the ground-truth reference. |
 | `conditional_mean_x_given_u_t` | 5 | Boundary check `b → 0 ⇒ E[x|u] = u/a` passes. |
 | `conditional_mean_eps_given_u_t` | 5 | Boundary check `a → 0 ⇒ E[ε|u] = u/b` passes. |
-| `velocity_target` | 4 | Linear in `u` (verified). Convention is Salimans–Ho per prompt; differs from paper's `v = u̇` — flagged. |
+| `velocity_target` | 5 | Now an alias for `velocity_target_paper`, the paper's `v = du/dt = ȧ x + ḃ ε` convention. Linearity, convention default, and FM closed form `v = ε − x` all unit-tested. The Salimans–Ho form is preserved as `velocity_target_SH` for reference only. |
 | `effective_gain_noise_pred` | 3 | Returns `|ḃ/b|` — the Eq. 66 prefactor, not the Eq. 63 ν directly. The "noise-prediction gain envelope" is interpreted as the divergent factor that the Jensen Gap multiplies. Documented in the docstring. |
 | `effective_gain_velocity_pred` | 5 | Constant 1 from Eq. 70 (`ad − bc = 1`). |
 | `jensen_gap("eps")` | 4 | Returns `|E[b]·E[1/b] − 1|`. This is the AM·HM-inverse convexity gap, which equals the Eq. 66 bracketed term when the "true" `b(t)` reference is replaced by its posterior arithmetic mean. The exact Eq. 66 form requires fixing `t`; we instead summarize the gap as a single scalar per `u`. |

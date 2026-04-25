@@ -38,5 +38,12 @@ For each n_s in {1, 2, 3}:
 - `shrinkage_ns{1,2,3}`            (20, 64, 64) Wiener signal fraction a^2 sigma^2 / (a^2 sigma^2 + b^2)
 - `shrinkage_radial_ns{1,2,3}`     (20, 31)     radially averaged per t
 
-## linear_score_fit.npz
-Reserved (Prompt 5). Not yet produced.
+## linear_score_fit.npz   (produced by scripts/linear_score_fit.py, not this script)
+Sanity check: OLS recovers the closed-form Wiener matrix on N(0, Sigma) data.
+- `t_values`                       (10,)       linear in [0.05, 0.95]
+- `A_learned_eps`                  (10, 2, 2)  OLS-fit linear estimator of eps from u
+- `A_exact_eps`                    (10, 2, 2)  b(t) M(t)^{-1}  (closed form)
+- `A_learned_v`                    (10, 2, 2)  OLS-fit estimator of velocity from u
+- `A_exact_v`                      (10, 2, 2)  a(t) b(t) (I - Sigma) M(t)^{-1}
+- `rel_err_eps`, `rel_err_v`       (10,)       Frobenius |A_OLS - A_exact| / |A_exact|
+- `n_samples`                      ()          N (per t) used for the OLS fit
