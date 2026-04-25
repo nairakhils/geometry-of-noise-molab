@@ -17,8 +17,7 @@ def _(mo):
 @app.cell
 def _(mo):
     mo.md(r"""
-    Akhil Nair  ·    ·  April 2026  ·
-    alphaXiv x marimo competition submission
+    April 2026  ·  alphaXiv x marimo competition submission
     """)
     return
 
