@@ -1,10 +1,6 @@
 # Singular gradients, conformal flows, and Fourier shrinkage
 
-[![reproduce](https://github.com/OWNER/geometry-of-noise-molab/actions/workflows/reproduce.yml/badge.svg)](https://github.com/OWNER/geometry-of-noise-molab/actions/workflows/reproduce.yml)
-
-> Substitute your GitHub handle for `OWNER` in the URLs below to make
-> the badge, the molab cloud / wasm links, and the clone commands
-> resolve. The repository content is otherwise self-contained.
+[![reproduce](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml/badge.svg)](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml)
 
 A closed-form reading of Sahraee-Ardakan, Delbracio & Milanfar,
 *The Geometry of Noise: Why Diffusion Models Don't Need Noise Conditioning*
@@ -23,15 +19,15 @@ draw.
 
 ## Open in molab (cloud)
 
-[Run on molab](https://molab.marimo.io/github/OWNER/geometry-of-noise-molab/blob/main/notebooks/walkthrough.py)
+[Run on molab](https://molab.marimo.io/github/nairakhils/geometry-of-noise-molab/blob/main/notebooks/walkthrough.py)
 
 WebAssembly preview (Pyodide):
-[/wasm variant](https://molab.marimo.io/github/OWNER/geometry-of-noise-molab/blob/main/notebooks/walkthrough.py/wasm).
+[/wasm variant](https://molab.marimo.io/github/nairakhils/geometry-of-noise-molab/blob/main/notebooks/walkthrough.py/wasm).
 
 ## Run locally
 
 ```
-git clone https://github.com/OWNER/geometry-of-noise-molab.git
+git clone https://github.com/nairakhils/geometry-of-noise-molab.git
 cd geometry-of-noise-molab
 uv pip install -e .
 marimo edit notebooks/walkthrough.py
@@ -43,7 +39,7 @@ runtime requirements (see `pyproject.toml`). Python 3.11 or newer.
 ## Reproduce from scratch
 
 ```
-git clone https://github.com/OWNER/geometry-of-noise-molab.git
+git clone https://github.com/nairakhils/geometry-of-noise-molab.git
 cd geometry-of-noise-molab
 uv pip install -e .
 python scripts/reproduce.py
