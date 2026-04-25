@@ -24,6 +24,27 @@ draw.
 WebAssembly preview (Pyodide):
 [/wasm variant](https://molab.marimo.io/github/nairakhils/geometry-of-noise-molab/blob/main/notebooks/walkthrough.py/wasm).
 
+## Runtimes
+
+The notebook is written to behave the same on three targets:
+
+- **Cloud molab** (recommended): full Python kernel, every cell
+  interactive. Click "Run on molab" above. Data files are read from the
+  cloned repo on disk.
+- **/wasm preview** (portable): the notebook boots in your browser via
+  Pyodide. Cold-load fetches the precomputed `.npz` files over HTTPS
+  from `raw.githubusercontent.com` (~10 s extra on first visit). Some
+  sliders may feel slower than on cloud, but every cell renders.
+- **Local development**: `marimo edit notebooks/walkthrough.py` after
+  `uv pip install -e .`. Reads `data/*.npz` from disk; no network
+  fetch.
+
+Cell wiring: an inlined helpers cell carries verbatim copies of the
+small set of `src/` functions the notebook calls (the `src/` package
+remains canonical for tests and reproducibility but the notebook does
+not import from it). The data loader is an async cell that picks the
+HTTPS path under WASM and the disk path otherwise.
+
 ## Run locally
 
 ```

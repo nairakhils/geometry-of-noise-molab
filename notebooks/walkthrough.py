@@ -197,40 +197,224 @@ def _(
 
 @app.cell
 def _():
-    import sys as _sys
-    from pathlib import Path
+    # WASM-aware imports. The notebook runs in three runtimes:
+    #   - local  marimo edit  (Python on disk)
+    #   - cloud  molab        (Python server-side)
+    #   - /wasm  preview      (Pyodide in the browser)
+    # Detect the WASM case so the data loader can pick HTTPS over disk.
+    import asyncio
+    import io
 
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
     import sympy as sp
 
-    REPO_ROOT = Path(__file__).resolve().parents[1]
-    if str(REPO_ROOT) not in _sys.path:
-        _sys.path.insert(0, str(REPO_ROOT))
+    try:
+        import pyodide  # noqa: F401
+        IN_WASM = True
+    except ImportError:
+        IN_WASM = False
+    return IN_WASM, asyncio, io, mo, np, plt, sp
 
-    # The notebook consumes data/*.npz for figures, src.sympy_validation
-    # for the symbolic re-derivation cell, and src.exact_affine + the 2D-slider
-    # widget for the live-probe overlay on the lead figure. The rest of src/
-    # is exercised by tests/ and scripts/precompute_arrays.py.
-    from src.exact_affine import denoiser_discrete
-    from src.schedules import a_of_t, b_of_t
-    from src.sympy_validation import (
-        validate_noise_gain_divergence,
-        validate_velocity_gain,
-    )
-    from src.widgets.two_d_slider import TwoDSliderWidget
+
+@app.cell
+def _(np, sp):
+    """Inlined helpers from src/.
+
+    The src/ package remains canonical and is exercised by tests/ and by
+    scripts/precompute_arrays.py. These inline copies are a thin runtime
+    layer so the notebook works in WASM where src/ is not on the import
+    path. Each definition is a verbatim copy of the corresponding src/
+    function, with no behaviour changes; if you edit one here, edit
+    src/ too and rerun pytest.
+    """
+    import anywidget
+    import traitlets
+    from scipy.special import logsumexp
+
+    # ---- src/schedules.py ----
+    def a_of_t(t):
+        t = np.asarray(t, dtype=np.float64)
+        return 1.0 - t
+
+    def b_of_t(t):
+        t = np.asarray(t, dtype=np.float64)
+        return t
+
+    # ---- src/exact_affine.py: discrete-data denoiser ----
+    def _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter):
+        K, d = centers.shape
+        sigma2 = a_vals * a_vals * jitter + b_vals * b_vals
+        centers_norm = np.einsum("kd,kd->k", centers, centers)
+        u_norm = np.einsum("...d,...d->...", u, u)
+        cross = np.einsum("...d,kd->...k", u, centers)
+        sq = (
+            u_norm[..., None, None]
+            - 2.0 * a_vals[:, None] * cross[..., None, :]
+            + (a_vals * a_vals)[:, None] * centers_norm[None, :]
+        )
+        log_w_unnorm = (
+            -0.5 * sq / sigma2[:, None]
+            - 0.5 * d * np.log(2.0 * np.pi * sigma2)[:, None]
+            - np.log(K)
+        )
+        return log_w_unnorm, sigma2
+
+    def denoiser_discrete(u, t, centers, jitter):
+        u = np.asarray(u, dtype=np.float64)
+        centers = np.asarray(centers, dtype=np.float64)
+        a_vals = np.atleast_1d(np.asarray(a_of_t(t), dtype=np.float64))
+        b_vals = np.atleast_1d(np.asarray(b_of_t(t), dtype=np.float64))
+        log_w, _ = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+        w = np.exp(log_w - logsumexp(log_w, axis=-1, keepdims=True))
+        D = np.einsum("...tk,kd->...td", w, centers)
+        if D.shape[-2] == 1:
+            D = D[..., 0, :]
+        return D
+
+    # ---- src/sympy_validation.py ----
+    def validate_velocity_gain():
+        a, b, t = sp.symbols("a b t", positive=True, real=True)
+        a_dot = sp.symbols("adot", real=True)
+        b_dot = sp.symbols("bdot", real=True)
+        c = sp.Integer(-1)
+        d_ = sp.Integer(1)
+        det = a * d_ - b * c
+        mu = (a_dot * d_ - b_dot * c) / det
+        nu = (b_dot * a - a_dot * b) / det
+        sub = {a: 1 - t, b: t, a_dot: -1, b_dot: 1}
+        return {
+            "mu_general": mu,
+            "nu_general": nu,
+            "mu_linear_FM": sp.simplify(mu.subs(sub)),
+            "nu_linear_FM": sp.simplify(nu.subs(sub)),
+        }
+
+    def validate_noise_gain_divergence():
+        a, b, t = sp.symbols("a b t", positive=True, real=True)
+        a_dot, b_dot = sp.symbols("adot bdot", real=True)
+        c = sp.Integer(0)
+        d_ = sp.Integer(1)
+        det = a * d_ - b * c
+        nu = (b_dot * a - a_dot * b) / det
+        sub = {a: 1 - t, b: t, a_dot: -1, b_dot: 1}
+        nu_lin = sp.simplify(nu.subs(sub))
+        envelope = sp.simplify(b_dot / b).subs(sub)
+        return {
+            "nu_noise_general": nu,
+            "nu_noise_linear_FM": nu_lin,
+            "envelope_linear_FM": envelope,
+            "ratio_limit": sp.limit(nu_lin / envelope, t, 0, "+"),
+        }
+
+    # ---- src/widgets/two_d_slider.py ----
+    _ESM_TWO_D_SLIDER = r"""
+    function render({ model, el }) {
+        const W = 220, H = 220;
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+        svg.setAttribute("width", W);
+        svg.setAttribute("height", H);
+        svg.style.border = "1px solid #888";
+        svg.style.background = "#fafafa";
+        svg.style.cursor = "crosshair";
+
+        const cross_v = document.createElementNS(ns, "line");
+        cross_v.setAttribute("y1", 0); cross_v.setAttribute("y2", H);
+        cross_v.setAttribute("stroke", "#bbb");
+        cross_v.setAttribute("stroke-dasharray", "2,2");
+        svg.appendChild(cross_v);
+
+        const cross_h = document.createElementNS(ns, "line");
+        cross_h.setAttribute("x1", 0); cross_h.setAttribute("x2", W);
+        cross_h.setAttribute("stroke", "#bbb");
+        cross_h.setAttribute("stroke-dasharray", "2,2");
+        svg.appendChild(cross_h);
+
+        const xRange = model.get("x_range");
+        const yRange = model.get("y_range");
+
+        function toPx(x, y) {
+            const px = ((x - xRange[0]) / (xRange[1] - xRange[0])) * W;
+            const py = H - ((y - yRange[0]) / (yRange[1] - yRange[0])) * H;
+            return [px, py];
+        }
+        function toData(px, py) {
+            const x = xRange[0] + (px / W) * (xRange[1] - xRange[0]);
+            const y = yRange[0] + (1 - py / H) * (yRange[1] - yRange[0]);
+            return [x, y];
+        }
+
+        for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+            const [cx, cy] = toPx(dx, dy);
+            const m = document.createElementNS(ns, "circle");
+            m.setAttribute("cx", cx); m.setAttribute("cy", cy);
+            m.setAttribute("r", 4); m.setAttribute("fill", "#888");
+            svg.appendChild(m);
+        }
+
+        const dot = document.createElementNS(ns, "circle");
+        dot.setAttribute("r", 6); dot.setAttribute("fill", "red");
+        dot.setAttribute("stroke", "white"); dot.setAttribute("stroke-width", 1.5);
+        svg.appendChild(dot);
+
+        const label = document.createElement("div");
+        label.style.fontFamily = "monospace";
+        label.style.fontSize = "11px";
+        label.style.marginTop = "4px";
+
+        function refresh() {
+            const x = model.get("x_value");
+            const y = model.get("y_value");
+            const [px, py] = toPx(x, y);
+            dot.setAttribute("cx", px); dot.setAttribute("cy", py);
+            cross_v.setAttribute("x1", px); cross_v.setAttribute("x2", px);
+            cross_h.setAttribute("y1", py); cross_h.setAttribute("y2", py);
+            label.textContent = `probe: (u1 = ${x.toFixed(2)}, u2 = ${y.toFixed(2)})`;
+        }
+        refresh();
+        model.on("change:x_value", refresh);
+        model.on("change:y_value", refresh);
+
+        function pick(event) {
+            const rect = svg.getBoundingClientRect();
+            const px = (event.clientX - rect.left) * (W / rect.width);
+            const py = (event.clientY - rect.top) * (H / rect.height);
+            const [x, y] = toData(px, py);
+            model.set("x_value", x);
+            model.set("y_value", y);
+            model.save_changes();
+        }
+        svg.addEventListener("click", pick);
+
+        el.appendChild(svg);
+        el.appendChild(label);
+    }
+    export default { render };
+    """
+
+    class TwoDSliderWidget(anywidget.AnyWidget):
+        _esm = _ESM_TWO_D_SLIDER
+        x_value = traitlets.Float(1.5).tag(sync=True)
+        y_value = traitlets.Float(0.0).tag(sync=True)
+        x_range = traitlets.List(traitlets.Float(), default_value=[-3.0, 3.0]).tag(sync=True)
+        y_range = traitlets.List(traitlets.Float(), default_value=[-3.0, 3.0]).tag(sync=True)
+
+        def __init__(self, x_range=None, y_range=None, x_value=1.5, y_value=0.0, **kwargs):
+            traits = {"x_value": float(x_value), "y_value": float(y_value)}
+            if x_range is not None:
+                traits["x_range"] = [float(v) for v in x_range]
+            if y_range is not None:
+                traits["y_range"] = [float(v) for v in y_range]
+            super().__init__(**traits, **kwargs)
 
     return (
-        REPO_ROOT,
         TwoDSliderWidget,
         a_of_t,
         b_of_t,
         denoiser_discrete,
-        mo,
-        np,
-        plt,
-        sp,
         validate_noise_gain_divergence,
         validate_velocity_gain,
     )
@@ -257,25 +441,63 @@ def _(plt):
 
 
 @app.cell
-def _(REPO_ROOT, np):
-    _DATA_DIR = REPO_ROOT / "data"
+async def _(IN_WASM, asyncio, io, np):
+    """Runtime-aware data loader.
 
-    def _load_npz(name):
-        with np.load(_DATA_DIR / name) as _z:
+    Local marimo edit and cloud molab read data/*.npz from disk;
+    the /wasm preview fetches them over HTTPS from raw.githubusercontent.com.
+    A urllib fallback covers the local-with-no-data-on-disk case.
+    All seven array files plus manifest.json are fetched in parallel via
+    asyncio.gather, so the WASM cold-load is one network round-trip.
+    """
+    import json as _json
+
+    DATA_BASE_REMOTE = (
+        "https://raw.githubusercontent.com/nairakhils/"
+        "geometry-of-noise-molab/main/data"
+    )
+    DATA_NAMES = (
+        "energy_landscape_2d.npz",
+        "stability_curves.npz",
+        "grf_gallery.npz",
+        "shrinkage_heatmap.npz",
+        "linear_score_fit.npz",
+        "singular_gradient.npz",
+        "grf_flow_strip.npz",
+    )
+
+    async def _fetch_bytes(name):
+        if not IN_WASM:
+            for _prefix in ("data", "../data"):
+                try:
+                    with open(f"{_prefix}/{name}", "rb") as _f:
+                        return _f.read()
+                except FileNotFoundError:
+                    continue
+        if IN_WASM:
+            import pyodide.http
+            _resp = await pyodide.http.pyfetch(f"{DATA_BASE_REMOTE}/{name}")
+            return await _resp.bytes()
+        # Local but data/ missing: fall back to urllib over HTTPS.
+        import urllib.request
+        return urllib.request.urlopen(f"{DATA_BASE_REMOTE}/{name}").read()
+
+    async def _fetch_npz(name):
+        _b = await _fetch_bytes(name)
+        with np.load(io.BytesIO(_b)) as _z:
             return {_k: np.asarray(_z[_k]) for _k in _z.files}
 
-    energy = _load_npz("energy_landscape_2d.npz")
-    stability = _load_npz("stability_curves.npz")
-    gallery = _load_npz("grf_gallery.npz")
-    shrinkage = _load_npz("shrinkage_heatmap.npz")
-    linear_fit = _load_npz("linear_score_fit.npz")
-    singular_gradient = _load_npz("singular_gradient.npz")
-    grf_flow_strip = _load_npz("grf_flow_strip.npz")
+    _loaded = await asyncio.gather(*[_fetch_npz(_n) for _n in DATA_NAMES])
+    energy, stability, gallery, shrinkage, linear_fit, singular_gradient, grf_flow_strip = _loaded
+
+    _manifest_bytes = await _fetch_bytes("manifest.json")
+    manifest = _json.loads(_manifest_bytes.decode("utf-8"))
     return (
         energy,
         gallery,
         grf_flow_strip,
         linear_fit,
+        manifest,
         shrinkage,
         singular_gradient,
         stability,
@@ -1044,28 +1266,17 @@ def _(mo):
 
 
 @app.cell
-def _(REPO_ROOT, mo):
-    import json as _json
-
-    _manifest_path = REPO_ROOT / "data" / "manifest.json"
-    if _manifest_path.exists():
-        _manifest = _json.loads(_manifest_path.read_text())
-        _entries = "\n".join(f"- `{_k}`: `{_v}`" for _k, _v in _manifest.items())
-        _provenance_md = mo.md(
-            "### Data provenance\n\n"
-            "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
-            "with fixed seeds. The SHA-256 prefixes below are the committed "
-            "reference; rerun `python scripts/reproduce.py` and diff against "
-            "the committed `data/manifest.json` for byte-exact verification.\n\n"
-            + _entries
-        )
-    else:
-        _provenance_md = mo.md(
-            "### Data provenance\n\n"
-            "`data/manifest.json` not found. Run `python scripts/reproduce.py` "
-            "to regenerate every `.npz` and write the manifest."
-        )
-    _provenance_md
+def _(manifest, mo):
+    _entries = "\n".join(f"- `{_k}`: `{_v}`" for _k, _v in manifest.items())
+    mo.md(
+        "### Data provenance\n\n"
+        "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
+        "with fixed seeds. The SHA-256 prefixes below come from the live "
+        "`data/manifest.json` (fetched alongside the data); rerun "
+        "`python scripts/reproduce.py` to regenerate every `.npz` and "
+        "the manifest.\n\n"
+        + _entries
+    )
     return
 
 

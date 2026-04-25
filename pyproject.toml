@@ -22,6 +22,12 @@ dependencies = [
 dev = [
     "pytest",
 ]
+# WASM target: the notebook also runs in Pyodide via the molab /wasm
+# preview. Pyodide already bundles numpy, scipy, matplotlib, plotly,
+# sympy, anywidget, and `pyodide.http` is built into the runtime, so
+# this group is intentionally empty -- it exists as a documented marker
+# of the supported runtime surface.
+wasm = []
 
 [tool.setuptools]
 packages = ["src"]
