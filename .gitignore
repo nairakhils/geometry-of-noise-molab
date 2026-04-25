@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 scratch/
 preview/
+preview_local/
+preview_local_wasm/
 
 # data/*.npz are normally cache, but the molab/GitHub-static-preview deployment
 # needs them in the repo so the notebook can load without running the precompute

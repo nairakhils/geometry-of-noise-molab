@@ -8,11 +8,8 @@ app = marimo.App(width="medium")
 def _(mo):
     mo.md(r"""
     # Singular gradients, conformal flows, and Fourier shrinkage
-    ## A closed-form reading of arXiv:2602.18428
 
-    Akhil Nair ·  · April 2026
-
-    *alphaXiv × marimo notebook competition submission*
+    *Akhil Nair · April 2026*
     """)
     return
 
@@ -21,50 +18,20 @@ def _(mo):
 def _(mo):
     mo.callout(
         mo.md(
-            "**Static preview.** Figures below render from a precomputed "
-            "session. Click *Run on molab* (or open the /wasm preview) to "
-            "make the sliders, dropdowns, and the 2-D probe widget live."
-        ),
-        kind="info",
-    )
-    return
-
-
-@app.cell
-def _(mo):
-    mo.callout(
-        mo.md(
-            "**TLDR.** The marginal energy "
-            "$E_{\\text{marg}}(u) = -\\log \\int p(u\\mid t)\\,p(t)\\,dt$ "
-            "has a $1/b(t)^2$ singularity at every clean datum, but the "
-            "paper's posterior-averaged conformal factor "
-            "$\\bar\\lambda(u)$ vanishes at the matching $b(t)^2$ rate. "
-            "The lead figure shows the **diverges, vanishes, bounded** "
-            "structure on four discrete data points and lets you click "
-            "anywhere on the $(u_1, u_2)$ plane to recompute the red "
-            "overlay live. The notebook's original contribution is a "
-            "Fourier-mode shrinkage extension on isotropic 2-D Gaussian "
-            "random fields, including the closed-form half-power cutoff "
-            "$k_c(t, n_s) = (a/b)^{2/n_s}$ that the paper does not draw."
+            "The paper [Sahraee-Ardakan, Delbracio & Milanfar, 2026] "
+            "proves that noise-blind diffusion samplers implicitly run a "
+            "Riemannian gradient flow on a singular energy landscape, and "
+            "that a posterior-averaged conformal factor cancels the "
+            "singularity. The figure below shows the cancellation directly "
+            "on a 4-point dataset where the math has a closed form. The "
+            "notebook adds an original extension: an exact Fourier-mode "
+            "picture of the same flow on Gaussian random fields, with a "
+            "closed-form half-power cutoff "
+            "$k_c(t, n_s) = (a(t)/b(t))^{2/n_s}$."
         ),
         kind="neutral",
     )
     return
-
-
-@app.cell
-def _(TwoDSliderWidget, mo, singular_gradient):
-    _n_t = len(singular_gradient["t_axis"])
-    probe = mo.ui.anywidget(
-        TwoDSliderWidget(x_range=[-3.0, 3.0], y_range=[-3.0, 3.0],
-                         x_value=1.5, y_value=0.0)
-    )
-    t_marker_slider = mo.ui.slider(
-        start=0, stop=_n_t - 1, step=1, value=int(_n_t * 0.4),
-        label="t marker index",
-    )
-    mo.hstack([probe, t_marker_slider], justify="start", align="start")
-    return probe, t_marker_slider
 
 
 @app.cell
@@ -78,6 +45,8 @@ def _(
     singular_gradient,
     t_marker_slider,
 ):
+    from matplotlib.lines import Line2D as _Line2D
+
     _t = singular_gradient["t_axis"]
     _raw = singular_gradient["raw_grad_norm"]
     _lam = singular_gradient["lambda_bar_curves"]
@@ -109,70 +78,137 @@ def _(
     _idx_mark = int(t_marker_slider.value)
     _t_mark = float(_t[_idx_mark])
 
-    _fit_mask = (_t >= 0.01) & (_t <= 0.5)
-    _slopes = []
-    for _i in range(len(_labels)):
-        _y = _pre[_i][_fit_mask]
-        if (_y > 0).all() and len(_y) > 2:
-            _slopes.append(float(np.polyfit(np.log(_t[_fit_mask]), np.log(_y), 1)[0]))
-        else:
-            _slopes.append(float("nan"))
+    # Colorblind-friendly palette: viridis sampled across the probes.
+    _cmap = plt.get_cmap("viridis")
+    _probe_colors = [_cmap(_i / max(len(_labels) - 1, 1)) for _i in range(len(_labels))]
 
-    _fig, _axes = plt.subplots(1, 3, figsize=(15, 4.4), sharex=True)
+    # Local style override: high DPI, white background, grid only on log ticks.
+    _rc = {
+        "figure.dpi": 130,
+        "savefig.dpi": 130,
+        "axes.facecolor": "white",
+        "figure.facecolor": "white",
+        "axes.grid": True,
+        "grid.alpha": 0.18,
+        "grid.linestyle": "-",
+        "grid.linewidth": 0.4,
+        "axes.axisbelow": True,
+    }
+    with plt.rc_context(_rc):
+        _fig, _axes = plt.subplots(1, 3, figsize=(13.5, 4.6), sharex=True)
 
-    for _i, _lab in enumerate(_labels):
-        _y = _raw[_i]
-        _mask = _y > 0
-        _axes[0].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.2, alpha=0.65)
-    _axes[0].loglog(_t, _env_inv, "k--", alpha=0.55, linewidth=1.0,
-                    label=r"$1 / b(t)^2$ envelope")
-    _live_mask = _raw_live > 0
-    _axes[0].loglog(_t[_live_mask], _raw_live[_live_mask], "r-", linewidth=2.2,
-                    label=f"LIVE ({_ux:.2f}, {_uy:.2f})")
-    if _live_mask[_idx_mark]:
-        _axes[0].plot(_t_mark, _raw_live[_idx_mark], "ro",
-                      markersize=10, markeredgecolor="white", zorder=10)
-    _axes[0].set_xlabel("t")
-    _axes[0].set_ylabel(r"$\|(u - a D_t^*) / \sigma^2\|$")
-    _axes[0].set_title("(1) raw: diverges as $1/b^2$")
-    _axes[0].legend(fontsize=7, loc="upper right")
+        # Panel (a) -- raw gradient
+        for _i, _lab in enumerate(_labels):
+            _y = _raw[_i]
+            _mask = _y > 0
+            _axes[0].loglog(_t[_mask], _y[_mask], color=_probe_colors[_i],
+                            linewidth=1.5, alpha=0.9)
+        _axes[0].loglog(_t, _env_inv, "k--", alpha=0.6, linewidth=1.2)
+        _live_mask = _raw_live > 0
+        _axes[0].loglog(_t[_live_mask], _raw_live[_live_mask],
+                        color="crimson", linewidth=2.4)
+        if _live_mask[_idx_mark]:
+            _axes[0].plot(_t_mark, _raw_live[_idx_mark], "o",
+                          color="crimson", markersize=10,
+                          markeredgecolor="white", zorder=10)
+        _axes[0].set_xlabel(r"noise level $t$")
+        _axes[0].set_ylabel(r"$\|(u - a D_t^*) / \sigma^2\|$")
+        _axes[0].set_title(r"raw gradient", fontsize=12, pad=8)
+        _axes[0].text(0.025, 0.965, "(a)", transform=_axes[0].transAxes,
+                      fontsize=12, fontweight="bold", va="top", ha="left")
 
-    _axes[1].loglog(_t, _lam[0], color="C3", linewidth=1.6,
-                    label=r"$\lambda(t)^2 = (b + b^2/a)^2$")
-    _axes[1].loglog(_t, _env_b2, "k--", alpha=0.55, linewidth=1.0,
-                    label=r"$b(t)^2$ envelope")
-    _axes[1].axvline(_t_mark, color="red", linestyle=":", alpha=0.6, linewidth=1.0)
-    _axes[1].set_xlabel("t")
-    _axes[1].set_ylabel(r"$\bar\lambda$ proxy")
-    _axes[1].set_title(r"(2) $\lambda(t)^2$: vanishes as $b^2$")
-    _axes[1].legend(fontsize=7, loc="upper left")
+        # Panel (b) -- conformal factor
+        _axes[1].loglog(_t, _lam[0], color="#440154", linewidth=2.0)
+        _axes[1].loglog(_t, _env_b2, "k--", alpha=0.6, linewidth=1.2)
+        _axes[1].axvline(_t_mark, color="crimson", linestyle=":",
+                         alpha=0.55, linewidth=1.0)
+        _axes[1].set_xlabel(r"noise level $t$")
+        _axes[1].set_ylabel(r"$\lambda(t)^2$")
+        _axes[1].set_title(r"conformal factor", fontsize=12, pad=8)
+        _axes[1].text(0.025, 0.965, "(b)", transform=_axes[1].transAxes,
+                      fontsize=12, fontweight="bold", va="top", ha="left")
 
-    for _i, _lab in enumerate(_labels):
-        _y = _pre[_i]
-        _mask = _y > 0
-        _slope_str = ("flat" if abs(_slopes[_i]) < 0.05
-                      else f"slope {_slopes[_i]:+.2f}") if not np.isnan(_slopes[_i]) else "n/a"
-        _axes[2].loglog(_t[_mask], _y[_mask], linewidth=1.2, alpha=0.65,
-                        label=f"{_lab}  ({_slope_str})")
-    _live_pre_mask = _pre_live > 0
-    if _live_pre_mask.sum() > 2 and (_pre_live[_fit_mask] > 0).all():
-        _live_slope = float(np.polyfit(np.log(_t[_fit_mask]),
-                                       np.log(_pre_live[_fit_mask]), 1)[0])
-        _live_lab = f"LIVE ({_ux:.2f}, {_uy:.2f})  slope {_live_slope:+.2f}"
-    else:
-        _live_lab = f"LIVE ({_ux:.2f}, {_uy:.2f})"
-    _axes[2].loglog(_t[_live_pre_mask], _pre_live[_live_pre_mask], "r-", linewidth=2.2,
-                    label=_live_lab)
-    if _live_pre_mask[_idx_mark]:
-        _axes[2].plot(_t_mark, _pre_live[_idx_mark], "ro",
-                      markersize=10, markeredgecolor="white", zorder=10)
-    _axes[2].set_xlabel("t")
-    _axes[2].set_ylabel(r"$\lambda(t)^2 \cdot \|\nabla\,\mathrm{integrand}\|$")
-    _axes[2].set_title("(3) bounded product")
-    _axes[2].legend(fontsize=7, loc="upper right")
+        # Panel (c) -- bounded product
+        for _i, _lab in enumerate(_labels):
+            _y = _pre[_i]
+            _mask = _y > 0
+            _axes[2].loglog(_t[_mask], _y[_mask], color=_probe_colors[_i],
+                            linewidth=1.5, alpha=0.9)
+        _live_pre_mask = _pre_live > 0
+        _axes[2].loglog(_t[_live_pre_mask], _pre_live[_live_pre_mask],
+                        color="crimson", linewidth=2.4)
+        if _live_pre_mask[_idx_mark]:
+            _axes[2].plot(_t_mark, _pre_live[_idx_mark], "o",
+                          color="crimson", markersize=10,
+                          markeredgecolor="white", zorder=10)
+        _axes[2].set_xlabel(r"noise level $t$")
+        _axes[2].set_ylabel(r"$\lambda(t)^2 \cdot \|(u - a D_t^*)/\sigma^2\|$")
+        _axes[2].set_title(r"bounded product", fontsize=12, pad=8)
+        _axes[2].text(0.025, 0.965, "(c)", transform=_axes[2].transAxes,
+                      fontsize=12, fontweight="bold", va="top", ha="left")
 
-    _fig.tight_layout()
+        # Shared legend at the bottom.
+        _handles = [
+            _Line2D([0], [0], color=_probe_colors[_i], lw=2, label=_lab)
+            for _i, _lab in enumerate(_labels)
+        ]
+        _handles += [
+            _Line2D([0], [0], color="k", linestyle="--", lw=1.2,
+                    label="analytic envelope"),
+            _Line2D([0], [0], color="crimson", lw=2.4,
+                    label=f"live probe ({_ux:.2f}, {_uy:.2f})"),
+        ]
+        _fig.legend(handles=_handles, loc="lower center", ncol=4,
+                    fontsize=9, frameon=False, bbox_to_anchor=(0.5, -0.04))
+
+        _fig.tight_layout(rect=[0, 0.06, 1, 1])
     _fig
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **Lead figure.** Five fixed probes plus a live red probe, evaluated at every noise level $t$ on a 4-corner discrete dataset. Panel **(a)** is the per-$t$ integrand of $\nabla E_{\text{marg}}$, which tracks the dashed $1/b(t)^2$ envelope on off-data probes. Panel **(c)** is the product with $\lambda(t)^2$ from panel **(b)**, bounded across the divergent regime. The cancellation is the closed-form mechanism behind the paper's stability theorem.
+    """)
+    return
+
+
+@app.cell
+def _(TwoDSliderWidget, mo, singular_gradient):
+    _n_t = len(singular_gradient["t_axis"])
+    probe = mo.ui.anywidget(
+        TwoDSliderWidget(x_range=[-3.0, 3.0], y_range=[-3.0, 3.0],
+                         x_value=1.5, y_value=0.0)
+    )
+    t_marker_slider = mo.ui.slider(
+        start=0, stop=_n_t - 1, step=1, value=int(_n_t * 0.4),
+        label="t marker index",
+    )
+    mo.vstack([
+        mo.md(
+            "**Interactive controls** (live on cloud / wasm). Click the "
+            "plane to pick a probe; the red curve in the figure above "
+            "recomputes in closed form on every click."
+        ),
+        mo.hstack([probe, t_marker_slider], justify="start", align="start"),
+    ])
+    return probe, t_marker_slider
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Contents
+
+    1. [The marginal energy and its preconditioner](#1-the-marginal-energy-and-its-preconditioner)
+    2. [Why the raw gradient is singular](#2-why-the-raw-gradient-is-singular)
+    3. [Parameterization stability](#3-parameterization-stability)
+    4. [OLS scaling check](#4-ols-scaling-linear-regression-recovers-the-closed-form)
+    5. [Extension: Fourier-mode shrinkage](#5-extension-fourier-mode-shrinkage-on-gaussian-random-fields)
+    6. [Limits](#6-limits)
+    7. [References](#7-references)
+    """)
     return
 
 
@@ -187,13 +223,6 @@ def _(mo):
                 "factor $\\bar\\lambda(u)$ shapes its gradient."
             ),
             kind="success",
-        ),
-        mo.md(
-            "Above: the lead figure plots three quantities versus $t$ at "
-            "five fixed probes plus a live red probe. Panel 1 is the "
-            "per-$t$ integrand of $\\nabla E_{\\text{marg}}$; panel 2 is "
-            "$\\lambda(t)^2 = (b + b^2/a)^2$; panel 3 is their product, "
-            "bounded throughout the divergent regime $t \\in [10^{-2}, 0.5]$."
         ),
     ])
     return
@@ -579,6 +608,7 @@ def _(mo):
                 "\\qquad \\text{(paper Eq. 11)}$$"
             ),
         }),
+        mo.md("[↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)"),
     ])
     return
 
@@ -654,6 +684,7 @@ def _(mo):
                 "{b(t)^2} \\quad \\square$$"
             ),
         }),
+        mo.md("[↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)"),
     ])
     return
 
@@ -731,6 +762,14 @@ def _(mo, sp, validate_noise_gain_divergence, validate_velocity_gain):
 
 @app.cell
 def _(mo):
+    mo.md("""
+    [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
+    """)
+    return
+
+
+@app.cell
+def _(mo):
     mo.vstack([
         mo.md("## 4. OLS scaling: linear regression recovers the closed form"),
         mo.callout(
@@ -783,6 +822,14 @@ def _(linear_fit, mo, n_highlight_slider, plt):
     _fig.tight_layout()
 
     mo.hstack([n_highlight_slider, _fig], justify="start", align="start", widths=[1, 4])
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
+    """)
     return
 
 
@@ -1113,6 +1160,14 @@ def _(mo):
 
 @app.cell
 def _(mo):
+    mo.md("""
+    [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
+    """)
+    return
+
+
+@app.cell
+def _(mo):
     mo.vstack([
         mo.md("## 6. Limits"),
         mo.callout(
@@ -1144,6 +1199,7 @@ def _(mo):
             ),
             kind="warn",
         ),
+        mo.md("[↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)"),
     ])
     return
 
@@ -1161,6 +1217,8 @@ def _(mo):
 
     Source: `geometry-of-noise-molab/`. See `docs/paper_summary.md` and
     `docs/implementation_notes.md` for the equation extraction and numerical caveats.
+
+    [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
     """)
     return
 

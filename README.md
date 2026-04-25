@@ -1,5 +1,7 @@
 # Singular gradients, conformal flows, and Fourier shrinkage
 
+![lead figure: raw gradient diverges, conformal factor vanishes, product is bounded](thumbnail.png)
+
 [![reproduce](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml/badge.svg)](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml)
 
 A closed-form reading of Sahraee-Ardakan, Delbracio & Milanfar,
