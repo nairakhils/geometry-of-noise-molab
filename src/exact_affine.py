@@ -306,3 +306,197 @@ def jensen_gap(
         return np.einsum("...t,...t->...", posterior, sq)
 
     raise ValueError(f"param must be 'eps' or 'v', got {param!r}")
+
+
+# ============================================================================
+# Discrete-data path: x ~ Uniform({centers}) * N(0, jitter * I).
+#
+# The conditional density at noise level t is a K-component isotropic Gaussian
+# mixture with means a(t) * x_k and per-component variance
+#
+#     sigma2(t) = a(t)^2 * jitter + b(t)^2.
+#
+# The optimal denoiser D_t^*(u) = E[x | u, t] is a softmax-weighted average of
+# the centers. The marginal-energy gradient (paper Eq. 11) becomes a posterior
+# average of  (u - a(t) D_t^*(u)) / sigma2(t).
+# ============================================================================
+
+
+def build_discrete_Sigma_proxy(centers: ArrayLike, jitter: float) -> dict:
+    """Bundle the discrete-data prior parameters for documentation purposes.
+
+    The actual computational entry points (`log_p_u_discrete`, `grad_E_marg_discrete`,
+    `conformal_factor_discrete`) take `centers` and `jitter` directly; this
+    helper exists so a caller has a single place to construct and inspect the
+    prior.
+    """
+    centers = np.asarray(centers, dtype=np.float64)
+    if centers.ndim != 2:
+        raise ValueError(f"centers must be (K, d); got shape {centers.shape}")
+    return {"centers": centers, "jitter": float(jitter), "K": int(centers.shape[0]), "d": int(centers.shape[1])}
+
+
+def _component_log_likelihoods_discrete(
+    u: NDArray[np.float64],
+    a_vals: NDArray[np.float64],
+    b_vals: NDArray[np.float64],
+    centers: NDArray[np.float64],
+    jitter: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Return (log_w_unnorm[..., T, K], sigma2[T])  where
+    log_w_unnorm[..., t, k] = - || u - a_t x_k ||^2 / (2 sigma2_t)
+                              - (d/2) log(2 pi sigma2_t) - log K.
+    """
+    K, d = centers.shape
+    sigma2 = a_vals * a_vals * jitter + b_vals * b_vals  # (T,)
+    centers_norm = np.einsum("kd,kd->k", centers, centers)              # (K,)
+    u_norm = np.einsum("...d,...d->...", u, u)                          # (...)
+    cross = np.einsum("...d,kd->...k", u, centers)                      # (..., K)
+    sq = (
+        u_norm[..., None, None]
+        - 2.0 * a_vals[:, None] * cross[..., None, :]
+        + (a_vals * a_vals)[:, None] * centers_norm[None, :]
+    )  # (..., T, K)
+    log_w_unnorm = (
+        -0.5 * sq / sigma2[:, None]
+        - 0.5 * d * np.log(2.0 * np.pi * sigma2)[:, None]
+        - np.log(K)
+    )
+    return log_w_unnorm, sigma2
+
+
+def log_p_u_given_t_discrete(
+    u: ArrayLike, t: ArrayLike, centers: ArrayLike, jitter: float
+) -> NDArray[np.float64]:
+    """log p(u | t) for the discrete-data prior, single t (or broadcastable)."""
+    u = np.asarray(u, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    a_vals = np.atleast_1d(np.asarray(a_of_t(t), dtype=np.float64))
+    b_vals = np.atleast_1d(np.asarray(b_of_t(t), dtype=np.float64))
+    log_w, _ = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+    out = logsumexp(log_w, axis=-1)
+    if out.shape[-1] == 1:
+        out = out[..., 0]
+    return out
+
+
+def log_p_u_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+) -> NDArray[np.float64]:
+    u = np.asarray(u, dtype=np.float64)
+    t_grid = np.asarray(t_grid, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    a_vals = a_of_t(t_grid); b_vals = b_of_t(t_grid)
+    log_w, _ = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+    log_pu_t = logsumexp(log_w, axis=-1)
+    log_grid_w = np.log(np.clip(_grid_weights(t_grid, np.asarray(prior_t, dtype=np.float64)), 1e-300, None))
+    return logsumexp(log_pu_t + log_grid_w, axis=-1)
+
+
+def E_marg_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+) -> NDArray[np.float64]:
+    return -log_p_u_discrete(u, t_grid, prior_t, centers, jitter)
+
+
+def posterior_t_given_u_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+) -> NDArray[np.float64]:
+    u = np.asarray(u, dtype=np.float64)
+    t_grid = np.asarray(t_grid, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    a_vals = a_of_t(t_grid); b_vals = b_of_t(t_grid)
+    log_w, _ = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+    log_pu_t = logsumexp(log_w, axis=-1)
+    log_grid_w = np.log(np.clip(_grid_weights(t_grid, np.asarray(prior_t, dtype=np.float64)), 1e-300, None))
+    log_joint = log_pu_t + log_grid_w
+    return np.exp(log_joint - logsumexp(log_joint, axis=-1, keepdims=True))
+
+
+def denoiser_discrete(
+    u: ArrayLike, t: ArrayLike, centers: ArrayLike, jitter: float
+) -> NDArray[np.float64]:
+    """E[x | u, t] for the discrete-data prior. Vectorized over leading axes of u."""
+    u = np.asarray(u, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    a_vals = np.atleast_1d(np.asarray(a_of_t(t), dtype=np.float64))
+    b_vals = np.atleast_1d(np.asarray(b_of_t(t), dtype=np.float64))
+    log_w, _ = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+    # softmax over component (K) axis: argument is the part dependent on k
+    w = np.exp(log_w - logsumexp(log_w, axis=-1, keepdims=True))  # (..., T, K)
+    D = np.einsum("...tk,kd->...td", w, centers)                  # (..., T, d)
+    if D.shape[-2] == 1:
+        D = D[..., 0, :]
+    return D
+
+
+def grad_E_marg_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+) -> NDArray[np.float64]:
+    """grad E_marg(u) for discrete-data prior; paper Eq. 11 specialized."""
+    u = np.asarray(u, dtype=np.float64)
+    t_grid = np.asarray(t_grid, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    a_vals = a_of_t(t_grid); b_vals = b_of_t(t_grid)
+    log_w, sigma2 = _component_log_likelihoods_discrete(u, a_vals, b_vals, centers, jitter)
+    w = np.exp(log_w - logsumexp(log_w, axis=-1, keepdims=True))     # (..., T, K)
+    D = np.einsum("...tk,kd->...td", w, centers)                     # (..., T, d)
+    log_pu_t = logsumexp(log_w, axis=-1)
+    log_grid_w = np.log(np.clip(_grid_weights(t_grid, np.asarray(prior_t, dtype=np.float64)), 1e-300, None))
+    log_joint = log_pu_t + log_grid_w
+    posterior = np.exp(log_joint - logsumexp(log_joint, axis=-1, keepdims=True))  # (..., T)
+
+    integrand = (u[..., None, :] - a_vals[:, None] * D) / sigma2[:, None]          # (..., T, d)
+    return np.einsum("...t,...td->...d", posterior, integrand)
+
+
+def grad_E_marg_numeric_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+    h: float = 1e-4,
+) -> NDArray[np.float64]:
+    """Central-difference gradient of E_marg_discrete (test reference)."""
+    u = np.asarray(u, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    d = centers.shape[1]
+    eye_h = np.eye(d) * h
+    u_plus = u[..., None, :] + eye_h
+    u_minus = u[..., None, :] - eye_h
+    return (
+        E_marg_discrete(u_plus, t_grid, prior_t, centers, jitter)
+        - E_marg_discrete(u_minus, t_grid, prior_t, centers, jitter)
+    ) / (2.0 * h)
+
+
+def conformal_factor_discrete(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    centers: ArrayLike,
+    jitter: float,
+) -> NDArray[np.float64]:
+    """lambda_bar(u) = E_{t|u}[ b(t) + b(t)^2 / a(t) ]   (paper Eq. 15, c=-1, d=1)."""
+    posterior = posterior_t_given_u_discrete(u, t_grid, prior_t, centers, jitter)
+    a_vals = a_of_t(np.asarray(t_grid, dtype=np.float64))
+    b_vals = b_of_t(np.asarray(t_grid, dtype=np.float64))
+    lam_t = b_vals + (b_vals * b_vals) / np.where(a_vals > 0, a_vals, np.nan)
+    return np.einsum("...t,t->...", posterior, lam_t)

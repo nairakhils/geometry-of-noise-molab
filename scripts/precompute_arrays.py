@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.exact_affine import (
     E_marg,
+    denoiser_discrete,
     grad_E_marg_analytic,
     jensen_gap,
     marginal_cov,
@@ -157,6 +158,69 @@ def precompute_grf_gallery(rng: np.random.Generator) -> None:
     _report("grf_gallery", t0, payload)
 
 
+def precompute_singular_gradient() -> None:
+    """Per-t slice of grad E_marg on a 4-corner discrete prior with small jitter.
+
+    Demonstrates the paper's central pathology: the integrand of grad E_marg
+    diverges as 1/b(t)^2 at every t-slice for probes off the data, while the
+    conformal preconditioning lambda(t) trims this to 1/b(t).
+    """
+    t0 = time.time()
+    centers = np.array(
+        [[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]], dtype=np.float64
+    )
+    jitter = 1e-4
+    # Upper bound 0.999 (not 1.0) avoids the FM-linear singularity at a(1) = 0,
+    # which would put a NaN in lambda(t) = b + b^2/a at the endpoint.
+    t_axis = np.logspace(-3.0, np.log10(0.999), 100)
+    u_probe = np.array(
+        [
+            [1.0, 1.0],   # at a center
+            [1.0, 0.0],   # midpoint between two centers
+            [0.0, 0.0],   # center of the square
+            [1.5, 0.0],   # slightly outside the right edge
+            [3.0, 3.0],   # far outside
+        ],
+        dtype=np.float64,
+    )
+    probe_labels = np.array(
+        [
+            "at a center (1, 1)",
+            "between two centers (1, 0)",
+            "center of square (0, 0)",
+            "outside edge (1.5, 0)",
+            "far outside (3, 3)",
+        ]
+    )
+
+    a_vals = a_of_t(t_axis)
+    b_vals = b_of_t(t_axis)
+    sigma2 = a_vals * a_vals * jitter + b_vals * b_vals          # (T,)
+    lam_t = b_vals + (b_vals * b_vals) / np.where(a_vals > 0, a_vals, np.nan)
+
+    # denoiser_discrete with leading axis (P,) of probes and t-axis (T,).
+    # For each (probe, t) we get D shape (P, T, d).
+    D = denoiser_discrete(u_probe, t_axis, centers, jitter)       # (P, T, d)
+    integrand = (u_probe[:, None, :] - a_vals[None, :, None] * D) / sigma2[None, :, None]
+    raw_norm = np.linalg.norm(integrand, axis=-1)                # (P, T)
+    preconditioned_norm = np.abs(lam_t)[None, :] * raw_norm
+    envelope = 1.0 / (b_vals * b_vals)                           # 1/b^2 reference
+
+    payload = dict(
+        centers=centers,
+        jitter=np.asarray(jitter),
+        t_axis=t_axis,
+        u_probe=u_probe,
+        probe_labels=probe_labels,
+        raw_norm=raw_norm,
+        preconditioned_norm=preconditioned_norm,
+        envelope_inv_b_squared=envelope,
+        lambda_t=lam_t,
+    )
+    np.savez(DATA_DIR / "singular_gradient.npz", **payload)
+    _report("singular_gradient", t0, payload)
+
+
 def precompute_shrinkage_heatmap() -> None:
     t0 = time.time()
     N = 64
@@ -204,6 +268,18 @@ def write_data_readme() -> None:
 
 Precomputed arrays for `notebooks/walkthrough.py`. All files are produced by
 `scripts/precompute_arrays.py` with `seed=0`. Reruns are deterministic.
+
+## singular_gradient.npz   (4 corner data, jitter = 1e-4)
+- `centers`                        (4, 2)      data atoms at the corners of [-1, 1]^2
+- `jitter`                         ()          1e-4
+- `t_axis`                         (100,)      log-spaced [1e-3, 1.0]
+- `u_probe`                        (5, 2)      probe points (at center, between two,
+                                                center of square, outside edge, far)
+- `probe_labels`                   (5,) U      human-readable labels for each probe
+- `raw_norm`                       (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
+- `preconditioned_norm`            (5, 100)    | lambda(t) | times raw_norm
+- `envelope_inv_b_squared`         (100,)      1 / b(t)^2 reference curve
+- `lambda_t`                       (100,)      conformal factor lambda(t) (paper Eq. 15)
 
 ## energy_landscape_2d.npz   (Sigma = diag([2.0, 0.5]))
 - `u_grid`                     (120, 120, 2)  query points on [-3, 3]^2
@@ -257,6 +333,7 @@ def main() -> None:
     t_total = time.time()
     rng = np.random.default_rng(SEED)
 
+    precompute_singular_gradient()
     precompute_energy_landscape()
     precompute_stability_curves(np.random.default_rng(SEED + 1))
     precompute_grf_gallery(np.random.default_rng(SEED + 2))

@@ -22,6 +22,61 @@ def _(mo):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    The marginal energy $E_{\text{marg}}(u) = -\log \int p(u\mid t)\,p(t)\,dt$
+    has a $1/b(t)^2$ singularity at every clean data point, so the raw
+    gradient diverges as the noise level shrinks. The figure below evaluates
+    that integrand on four discrete data points $\{(\pm 1, \pm 1)\}$ at
+    five fixed probes: the raw norm tracks the $1/b^2$ envelope, while the
+    paper's conformal factor $\lambda(t) = b + b^2/a$ trims the divergence.
+    The original-claim part of this notebook is a Fourier-mode shrinkage
+    picture for isotropic Gaussian random fields, presented later.
+    """)
+    return
+
+
+@app.cell
+def _(plt, singular_gradient):
+    _t = singular_gradient["t_axis"]
+    _raw = singular_gradient["raw_norm"]
+    _pre = singular_gradient["preconditioned_norm"]
+    _env = singular_gradient["envelope_inv_b_squared"]
+    _labels = list(singular_gradient["probe_labels"])
+
+    _fig, _axes = plt.subplots(1, 2, figsize=(13, 4.6), sharex=True)
+
+    for _i, _lab in enumerate(_labels):
+        _y = _raw[_i]
+        _mask = _y > 0
+        _axes[0].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.4)
+    _axes[0].loglog(_t, _env, "k--", alpha=0.55, linewidth=1.0,
+                    label=r"$1 / b(t)^2$ envelope")
+    _axes[0].set_xlabel("t"); _axes[0].set_ylabel(r"$\|(u - a\,D_t^*) / \sigma^2\|$")
+    _axes[0].set_title("raw integrand of grad E_marg")
+    _axes[0].legend(fontsize=8, loc="upper right")
+
+    for _i, _lab in enumerate(_labels):
+        _y = _pre[_i]
+        _mask = _y > 0
+        _axes[1].loglog(_t[_mask], _y[_mask], label=_lab, linewidth=1.4)
+    _axes[1].set_xlabel("t"); _axes[1].set_ylabel(r"$|\lambda(t)| \cdot \|(u - a\,D_t^*) / \sigma^2\|$")
+    _axes[1].set_title("preconditioned by conformal factor")
+    _axes[1].legend(fontsize=8, loc="upper right")
+
+    _fig.suptitle("Singular gradient (left) and its conformal cancellation (right)",
+                  y=1.02, fontsize=12)
+    _fig.text(0.5, -0.02,
+              "4 discrete data points at the corners of [-1, 1]^2, jitter = 1e-4."
+              "  Raw integrand diverges as 1 / b(t)^2 near each datum;"
+              "  preconditioning by lambda(t) = b + b^2/a removes one order of t.",
+              ha="center", fontsize=8.5, style="italic")
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell
 def _():
     import sys as _sys
     from pathlib import Path
@@ -72,7 +127,8 @@ def _(REPO_ROOT, np):
     gallery = _load_npz("grf_gallery.npz")
     shrinkage = _load_npz("shrinkage_heatmap.npz")
     linear_fit = _load_npz("linear_score_fit.npz")
-    return energy, gallery, linear_fit, shrinkage, stability
+    singular_gradient = _load_npz("singular_gradient.npz")
+    return energy, gallery, linear_fit, shrinkage, singular_gradient, stability
 
 
 @app.cell
@@ -102,6 +158,16 @@ def _(mo):
     so the analysis applies mode by mode. We plot the per-mode Wiener
     signal-fraction $W(k, t) = a^2 \sigma_k^2 / (a^2 \sigma_k^2 + b^2)$ as
     both a heatmap and 1D slices.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Same geometry on smooth Gaussian data for comparison: with no Dirac
+    atoms in $p(x)$, neither field is singular, but the conformal
+    preconditioner still reshapes the flow.
     """)
     return
 

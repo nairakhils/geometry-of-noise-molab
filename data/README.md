@@ -3,6 +3,18 @@
 Precomputed arrays for `notebooks/walkthrough.py`. All files are produced by
 `scripts/precompute_arrays.py` with `seed=0`. Reruns are deterministic.
 
+## singular_gradient.npz   (4 corner data, jitter = 1e-4)
+- `centers`                        (4, 2)      data atoms at the corners of [-1, 1]^2
+- `jitter`                         ()          1e-4
+- `t_axis`                         (100,)      log-spaced [1e-3, 1.0]
+- `u_probe`                        (5, 2)      probe points (at center, between two,
+                                                center of square, outside edge, far)
+- `probe_labels`                   (5,) U      human-readable labels for each probe
+- `raw_norm`                       (5, 100)    || (u - a D_t*) / sigma^2 ||  per (probe, t)
+- `preconditioned_norm`            (5, 100)    | lambda(t) | times raw_norm
+- `envelope_inv_b_squared`         (100,)      1 / b(t)^2 reference curve
+- `lambda_t`                       (100,)      conformal factor lambda(t) (paper Eq. 15)
+
 ## energy_landscape_2d.npz   (Sigma = diag([2.0, 0.5]))
 - `u_grid`                     (120, 120, 2)  query points on [-3, 3]^2
 - `E_marg_grid`                (120, 120)     marginal energy E_marg(u) (Eq. 8)

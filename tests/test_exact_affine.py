@@ -4,10 +4,13 @@ from scipy.stats import multivariate_normal
 
 from src.exact_affine import (
     E_marg,
+    build_discrete_Sigma_proxy,
     conditional_mean_eps_given_u_t,
     conditional_mean_x_given_u_t,
     grad_E_marg_analytic,
+    grad_E_marg_discrete,
     grad_E_marg_numeric,
+    grad_E_marg_numeric_discrete,
     log_p_u_given_t,
     marginal_cov,
     posterior_t_given_u,
@@ -140,3 +143,29 @@ def test_velocity_target_SH_still_uses_alpha_eps_minus_sigma_x():
     # And confirm the two conventions disagree (sanity check on the bug fix).
     assert not np.allclose(velocity_target_SH(u, t, SIGMA),
                            velocity_target_paper(u, t, SIGMA), atol=1e-3)
+
+
+# Discrete-data path
+
+DISCRETE_CENTERS = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
+DISCRETE_JITTER = 1e-3
+DISCRETE_T_GRID = np.linspace(0.05, 0.95, 41)
+DISCRETE_PRIOR = np.full_like(DISCRETE_T_GRID, 1.0 / (DISCRETE_T_GRID[-1] - DISCRETE_T_GRID[0]))
+
+
+def test_build_discrete_Sigma_proxy_bundles_inputs():
+    proxy = build_discrete_Sigma_proxy(DISCRETE_CENTERS, DISCRETE_JITTER)
+    assert proxy["K"] == 4 and proxy["d"] == 2
+    assert np.allclose(proxy["centers"], DISCRETE_CENTERS)
+    assert proxy["jitter"] == DISCRETE_JITTER
+
+
+def test_grad_E_marg_discrete_matches_central_difference():
+    rng = np.random.default_rng(42)
+    for _ in range(10):
+        u = rng.standard_normal(2) * 0.7
+        ga = grad_E_marg_discrete(u, DISCRETE_T_GRID, DISCRETE_PRIOR,
+                                  DISCRETE_CENTERS, DISCRETE_JITTER)
+        gn = grad_E_marg_numeric_discrete(u, DISCRETE_T_GRID, DISCRETE_PRIOR,
+                                          DISCRETE_CENTERS, DISCRETE_JITTER, h=1e-4)
+        assert np.allclose(ga, gn, atol=1e-3), f"u={u}: {ga} vs {gn}"
