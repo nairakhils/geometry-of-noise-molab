@@ -28,7 +28,9 @@ Curves on a dense 300-point t grid (linear in [0.05, 0.95]).
 - `t_values`                       (300,)
 - `gain_noise_pred`                (300,)   |b_dot/b| = 1/t for FM
 - `gain_velocity_pred`             (300,)   identically 1 (Eq. 70)
-- `gain_envelope_analytic`         (300,)   1/b(t) reference curve
+- `gain_envelope_analytic`         (300,)   1/b(t) reference curve (Eq. 66 prefactor)
+- `gain_nu_literal_noise`          (300,)   literal nu(t) from Eq. 63 with (c, d) = (0, 1)
+- `gain_nu_literal_velocity`       (300,)   literal nu(t) from Eq. 63 with (c, d) = (-1, 1)
 - `jensen_gap_noise_pred`          (300,)   E_u[ |E[b]E[1/b]-1| ], 500 u ~ N(0,M(t)) per t
 - `jensen_gap_velocity_pred`       (300,)   posterior dispersion of v_tau*(u), same u's
 - `drift_error_noise_pred`         (300,)   gain * gap (paper Eq. 22 product)

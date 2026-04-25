@@ -31,7 +31,7 @@ from src.grf_2d import (
     measure_psd_radial,
     sample_grf_batch,
 )
-from src.schedules import a_of_t, b_of_t
+from src.schedules import a_of_t, adot_of_t, b_of_t, bdot_of_t
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +103,15 @@ def precompute_stability_curves(rng: np.random.Generator) -> None:
     gain_velocity = np.ones_like(t_values)
     gain_envelope = 1.0 / b_of_t(t_values)
 
+    # Literal Eq. 63 sampler-gain coefficient: nu(t) = (b_dot a - a_dot b) / (a d - b c)
+    _a = a_of_t(t_values); _b = b_of_t(t_values)
+    _ad = adot_of_t(t_values); _bd = bdot_of_t(t_values)
+    _num = _bd * _a - _ad * _b
+    # noise prediction: (c, d) = (0, 1)  =>  ad - bc = a
+    gain_nu_literal_noise = _num / _a
+    # velocity prediction (paper conv.): (c, d) = (-1, 1)  =>  ad - bc = a + b
+    gain_nu_literal_velocity = _num / (_a + _b)
+
     jensen_eps = np.empty_like(t_values)
     jensen_v = np.empty_like(t_values)
 
@@ -122,6 +131,8 @@ def precompute_stability_curves(rng: np.random.Generator) -> None:
         gain_noise_pred=gain_noise,
         gain_velocity_pred=gain_velocity,
         gain_envelope_analytic=gain_envelope,
+        gain_nu_literal_noise=gain_nu_literal_noise,
+        gain_nu_literal_velocity=gain_nu_literal_velocity,
         jensen_gap_noise_pred=jensen_eps,
         jensen_gap_velocity_pred=jensen_v,
         drift_error_noise_pred=drift_noise,
@@ -294,7 +305,9 @@ Curves on a dense 300-point t grid (linear in [0.05, 0.95]).
 - `t_values`                       (300,)
 - `gain_noise_pred`                (300,)   |b_dot/b| = 1/t for FM
 - `gain_velocity_pred`             (300,)   identically 1 (Eq. 70)
-- `gain_envelope_analytic`         (300,)   1/b(t) reference curve
+- `gain_envelope_analytic`         (300,)   1/b(t) reference curve (Eq. 66 prefactor)
+- `gain_nu_literal_noise`          (300,)   literal nu(t) from Eq. 63 with (c, d) = (0, 1)
+- `gain_nu_literal_velocity`       (300,)   literal nu(t) from Eq. 63 with (c, d) = (-1, 1)
 - `jensen_gap_noise_pred`          (300,)   E_u[ |E[b]E[1/b]-1| ], 500 u ~ N(0,M(t)) per t
 - `jensen_gap_velocity_pred`       (300,)   posterior dispersion of v_tau*(u), same u's
 - `drift_error_noise_pred`         (300,)   gain * gap (paper Eq. 22 product)

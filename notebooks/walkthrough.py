@@ -314,15 +314,15 @@ def _(plt, stability):
     _t = stability["t_values"]
     _fig, _axes = plt.subplots(1, 3, figsize=(14, 4.2))
 
-    _axes[0].loglog(_t, stability["gain_noise_pred"], label="noise: |b'/b|")
-    _axes[0].loglog(_t, stability["gain_velocity_pred"], label="velocity: 1")
-    _axes[0].loglog(
-        _t, stability["gain_envelope_analytic"], "--",
-        alpha=0.55, label="O(1/b) envelope",
-    )
-    _axes[0].set_xlabel("t"); _axes[0].set_ylabel("|nu(t)|")
-    _axes[0].set_title("(a) sampler gain")
-    _axes[0].legend()
+    _axes[0].loglog(_t, stability["gain_nu_literal_noise"],
+                    label=r"noise: $\nu(t) = 1/(1-t)$  ($c=0,\,d=1$)")
+    _axes[0].loglog(_t, stability["gain_nu_literal_velocity"],
+                    label=r"velocity: $\nu(t) = 1$  ($c=-1,\,d=1$)")
+    _axes[0].loglog(_t, stability["gain_envelope_analytic"], "--",
+                    alpha=0.55, label=r"$|\dot b / b|$ envelope (Eq. 66)")
+    _axes[0].set_xlabel("t"); _axes[0].set_ylabel(r"$\nu(t)$  /  envelope")
+    _axes[0].set_title(r"(a) sampler gain coefficient $\nu(t)$ vs near-manifold envelope")
+    _axes[0].legend(fontsize=8)
 
     _axes[1].loglog(_t, stability["jensen_gap_noise_pred"], label="noise (eps form)")
     _axes[1].loglog(_t, stability["jensen_gap_velocity_pred"], label="velocity (v form)")
@@ -333,7 +333,7 @@ def _(plt, stability):
     _axes[2].loglog(_t, stability["drift_error_noise_pred"], label="noise: diverges")
     _axes[2].loglog(_t, stability["drift_error_velocity_pred"], label="velocity: bounded")
     _axes[2].set_xlabel("t"); _axes[2].set_ylabel("|nu| * gap")
-    _axes[2].set_title("(c) Drift Perturbation Error")
+    _axes[2].set_title("(c) drift perturbation error")
     _axes[2].legend()
 
     _fig.tight_layout()
@@ -361,15 +361,18 @@ def _(mo):
     **Notebook result.** We compute the noise-prediction Jensen Gap
     $|E_{\tau \mid u}[b(\tau)]\,E_{\tau \mid u}[1/b(\tau)] - 1|$ and the
     velocity dispersion $E_{\tau \mid u}[\|v_\tau^* - E[v]\|^2]$ on $500$
-    samples per $t$, and multiply by the analytic envelopes
-    `gain_noise_pred(t) = |b_dot/b|` and `gain_velocity_pred(t) = 1`. (We
-    use the Eq. 66 prefactor as the noise envelope rather than the literal
-    $\nu(t)$ from Eq. 63; the two coincide near the manifold and the
-    distinction is documented in `docs/implementation_notes.md`.) Panel (c)
-    of the figure shows the resulting product: the noise curve diverges as
-    $t \to 0$, the velocity curve stays $\mathcal{O}(10^{-2})$ across the
-    full range. The Jensen Gap itself (panel b) does not vanish as
-    $t \to 0$; the divergence sits in the envelope, as the paper predicts.
+    samples per $t$, and multiply by the near-manifold envelope
+    $|\dot b / b|$ for noise prediction and by $1$ for velocity prediction.
+    Panel (a) shows the literal Eq. 63 coefficient for both
+    parameterizations alongside the near-manifold envelope $|\dot b / b|$
+    from Eq. 66; the noise-prediction coefficient is unbounded under FM
+    linear (it grows as $1/(1-t)$ and diverges at $t \to 1$, where
+    $a \to 0$), the envelope diverges at $t \to 0$ where the noise level
+    collapses, and the velocity coefficient is identically 1. Panel (c)
+    shows the product of envelope and gap: the noise curve diverges as
+    $t \to 0$, the velocity curve stays $\mathcal{O}(10^{-2})$. The Jensen
+    Gap (panel b) does not vanish on its own near $t \to 0$; the divergence
+    sits in the envelope, as the paper predicts.
     """)
     return
 
