@@ -98,8 +98,6 @@ scripts, not as a strict reproducibility lock.
 - `docs/paper_summary.md`: equation-by-equation extraction of the paper.
 - `docs/implementation_notes.md`: numerical decisions and a per-function
   confidence ledger.
-- ``: prose audit of the notebook.
-- ``: pre-submission status report.
 - `notebooks/__marimo__/session/`: rendered cell outputs for molab's
   preview.
 
