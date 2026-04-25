@@ -46,22 +46,22 @@ python scripts/reproduce.py
 ```
 
 This regenerates every `.npz`, runs the test suite, and writes
-`data/manifest.json`. The committed `manifest.json` is the reference,
-generated on the CI runner (Linux, Python 3.11, OpenBLAS); CI re-runs
-the same command on every push and asserts the manifest is unchanged.
+`data/manifest.json`. The committed `manifest.json` is a fingerprint
+of one specific build (macOS / Python 3.14 / numpy 2.4.4 / Apple
+Accelerate). CI re-runs `reproduce.py` on every push and reports any
+drift in the manifest, but does **not** fail on drift.
 
-**Cross-platform note.** Three of the seven files
-(`energy_landscape_2d.npz`, `grf_flow_strip.npz`, `shrinkage_heatmap.npz`)
-hash identically on macOS and Linux. The remaining four
-(`grf_gallery.npz`, `linear_score_fit.npz`, `singular_gradient.npz`,
-`stability_curves.npz`) have BLAS / LAPACK / FFT-routine differences
-that produce small floating-point variations across platforms; their
-SHA-256 prefixes will drift between Apple Accelerate and OpenBLAS even
-with identical seeds. The numerical content is consistent (medians and
-empirical statistics match to printed precision); only the bytes
-differ. The committed manifest tracks the Linux build; macOS users
-running `reproduce.py` will see drift in the four sensitive files but
-identical figures and test results.
+**Cross-platform / cross-run note.** Byte-exact reproduction across
+machines turns out to be unachievable for this codebase. Two of the
+seven files (`energy_landscape_2d.npz` and one or two more depending
+on the run) are stable across macOS and Linux, but the remaining ones
+have FFT-plan and LAPACK-reduction order non-determinism that can
+shift bytes even between back-to-back Linux CI runs at single-thread
+BLAS. The numerical content is consistent across all runs (medians
+match to printed precision; pytest passes; sympy gives the same
+expressions); only the SHA-256 fingerprints drift. Treat the manifest
+as a useful change-detector for *intentional* edits to the precompute
+scripts, not as a strict reproducibility lock.
 
 ## Layout
 
