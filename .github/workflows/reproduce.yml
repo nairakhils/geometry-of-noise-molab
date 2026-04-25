@@ -1,0 +1,26 @@
+name: reproduce
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: regenerate data and run tests
+        run: python scripts/reproduce.py
+
+      - name: assert manifest matches committed reference
+        run: git diff --exit-code data/manifest.json

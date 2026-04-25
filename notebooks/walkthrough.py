@@ -915,6 +915,31 @@ def _(mo):
 
 
 @app.cell
+def _(REPO_ROOT, mo):
+    import json as _json
+
+    _manifest_path = REPO_ROOT / "data" / "manifest.json"
+    if _manifest_path.exists():
+        _manifest = _json.loads(_manifest_path.read_text())
+        _entries = "\n".join(f"- `{_k}`: `{_v}`" for _k, _v in _manifest.items())
+        mo.md(
+            "### Data provenance\n\n"
+            "Each `.npz` under `data/` was produced by `scripts/reproduce.py` "
+            "with fixed seeds. The SHA-256 prefixes below are the committed "
+            "reference; rerun `python scripts/reproduce.py` and diff against "
+            "the committed `data/manifest.json` for byte-exact verification.\n\n"
+            + _entries
+        )
+    else:
+        mo.md(
+            "### Data provenance\n\n"
+            "`data/manifest.json` not found. Run `python scripts/reproduce.py` "
+            "to regenerate every `.npz` and write the manifest."
+        )
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     ## References

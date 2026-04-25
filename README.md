@@ -1,5 +1,7 @@
 # Singular gradients, conformal flows, and Fourier shrinkage
 
+[![reproduce](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml/badge.svg)](https://github.com/nairakhils/geometry-of-noise-molab/actions/workflows/reproduce.yml)
+
 A closed-form reading of Sahraee-Ardakan, Delbracio & Milanfar,
 *The Geometry of Noise: Why Diffusion Models Don't Need Noise Conditioning*
 ([arXiv:2602.18428](https://arxiv.org/abs/2602.18428), February 2026).
@@ -31,8 +33,23 @@ uv pip install -e .
 marimo edit notebooks/walkthrough.py
 ```
 
-`numpy`, `scipy`, `matplotlib`, and `marimo` are the only runtime
-requirements (see `pyproject.toml`). Python 3.11 or newer.
+`numpy`, `scipy`, `matplotlib`, `marimo`, `plotly`, and `sympy` are the
+runtime requirements (see `pyproject.toml`). Python 3.11 or newer.
+
+## Reproduce from scratch
+
+```
+git clone https://github.com/nairakhils/geometry-of-noise-molab.git
+cd geometry-of-noise-molab
+uv pip install -e .
+python scripts/reproduce.py
+```
+
+This regenerates every `.npz`, runs the test suite, and writes
+`data/manifest.json`. The committed `manifest.json` is the reference;
+your regenerated file should match byte-for-byte if the fixed seeds in
+the precompute scripts have not been touched. CI runs the same command
+on every push and asserts the manifest is unchanged.
 
 ## Layout
 
