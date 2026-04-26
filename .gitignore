@@ -11,7 +11,7 @@ preview_local_wasm/
 docs/*.png
 docs/*report*
 docs/*checklist*
-docs/*
+docs
 scripts/screenshot*.py
 
 # data/*.npz are normally cache, but the molab/GitHub-static-preview deployment
