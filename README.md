@@ -95,9 +95,6 @@ scripts, not as a strict reproducibility lock.
   `scripts/precompute_arrays.py` and `scripts/linear_score_fit.py`.
   Tracked in git so the notebook loads without re-running the precompute
   step.
-- `docs/paper_summary.md`: equation-by-equation extraction of the paper.
-- `docs/implementation_notes.md`: numerical decisions and a per-function
-  confidence ledger.
 - `notebooks/__marimo__/session/`: rendered cell outputs for molab's
   preview.
 
