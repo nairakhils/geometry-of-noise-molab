@@ -500,3 +500,41 @@ def conformal_factor_discrete(
     b_vals = b_of_t(np.asarray(t_grid, dtype=np.float64))
     lam_t = b_vals + (b_vals * b_vals) / np.where(a_vals > 0, a_vals, np.nan)
     return np.einsum("...t,t->...", posterior, lam_t)
+
+
+def _circle_centers(radius: float, n_anchors: int) -> NDArray[np.float64]:
+    """n_anchors equally-spaced points on a circle of given radius in R^2."""
+    theta = np.linspace(0.0, 2.0 * np.pi, int(n_anchors), endpoint=False)
+    return np.stack([radius * np.cos(theta), radius * np.sin(theta)], axis=1)
+
+
+def grad_E_marg_circle(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    radius: float = 1.0,
+    n_anchors: int = 256,
+    jitter: float = 1e-6,
+) -> NDArray[np.float64]:
+    """grad E_marg(u) for x ~ Uniform on a circle of given radius in R^2.
+
+    The continuous prior is approximated by `n_anchors` equally-spaced anchor
+    points; small `jitter` keeps the per-component Gaussians well-conditioned
+    near the manifold (the manifold itself has measure zero in R^2, so a
+    pure delta-on-circle prior is singular as t -> 0).
+    """
+    centers = _circle_centers(radius, n_anchors)
+    return grad_E_marg_discrete(u, t_grid, prior_t, centers, jitter)
+
+
+def conformal_factor_circle(
+    u: ArrayLike,
+    t_grid: ArrayLike,
+    prior_t: ArrayLike,
+    radius: float = 1.0,
+    n_anchors: int = 256,
+    jitter: float = 1e-6,
+) -> NDArray[np.float64]:
+    """lambda_bar(u) for the circle prior; same Eq. 15 form as the discrete case."""
+    centers = _circle_centers(radius, n_anchors)
+    return conformal_factor_discrete(u, t_grid, prior_t, centers, jitter)

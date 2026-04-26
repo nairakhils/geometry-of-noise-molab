@@ -21,6 +21,7 @@ def main() -> None:
     scripts_in_order = [
         "scripts/precompute_arrays.py",
         "scripts/linear_score_fit.py",
+        "scripts/train_score_mlp.py",
     ]
     for script in scripts_in_order:
         print(f"Running {script}...")

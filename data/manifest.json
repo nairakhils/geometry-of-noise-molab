@@ -1,9 +1,11 @@
 {
+  "circle_manifold.npz": "9348bfbe6a1d1af0",
   "energy_landscape_2d.npz": "ffb8d411deb30f83",
   "grf_flow_strip.npz": "981e4e9a9364248f",
   "grf_gallery.npz": "0db0eed7fc868de8",
   "linear_score_fit.npz": "3765b38232117fa2",
   "shrinkage_heatmap.npz": "4cba0224ed4a7517",
   "singular_gradient.npz": "30cb609afde6e48d",
-  "stability_curves.npz": "573ed0c4ffd24c7d"
+  "stability_curves.npz": "573ed0c4ffd24c7d",
+  "tiny_mlp_results.npz": "56fba856da6ad8be"
 }

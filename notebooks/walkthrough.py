@@ -205,6 +205,7 @@ def _(mo):
     2. [Why the raw gradient is singular](#2-why-the-raw-gradient-is-singular)
     3. [Parameterization stability](#3-parameterization-stability)
     4. [OLS scaling check](#4-ols-scaling-linear-regression-recovers-the-closed-form)
+    4b. [Tiny MLP recovers the closed form](#4b-a-tiny-mlp-recovers-the-same-closed-form)
     5. [Extension: Fourier-mode shrinkage](#5-extension-fourier-mode-shrinkage-on-gaussian-random-fields)
     6. [Limits](#6-limits)
     7. [References](#7-references)
@@ -472,6 +473,8 @@ async def _(IN_WASM, asyncio, io, np):
         "linear_score_fit.npz",
         "singular_gradient.npz",
         "grf_flow_strip.npz",
+        "circle_manifold.npz",
+        "tiny_mlp_results.npz",
     )
 
     async def _fetch_bytes(name):
@@ -495,11 +498,13 @@ async def _(IN_WASM, asyncio, io, np):
             return {_k: np.asarray(_z[_k]) for _k in _z.files}
 
     _loaded = await asyncio.gather(*[_fetch_npz(_n) for _n in DATA_NAMES])
-    energy, stability, gallery, shrinkage, linear_fit, singular_gradient, grf_flow_strip = _loaded
+    (energy, stability, gallery, shrinkage, linear_fit, singular_gradient,
+     grf_flow_strip, circle_manifold, tiny_mlp) = _loaded
 
     _manifest_bytes = await _fetch_bytes("manifest.json")
     manifest = _json.loads(_manifest_bytes.decode("utf-8"))
     return (
+        circle_manifold,
         energy,
         gallery,
         grf_flow_strip,
@@ -508,6 +513,7 @@ async def _(IN_WASM, asyncio, io, np):
         shrinkage,
         singular_gradient,
         stability,
+        tiny_mlp,
     )
 
 
@@ -631,32 +637,58 @@ def _(mo):
 
 
 @app.cell
-def _(np, plt, singular_gradient):
-    _t = singular_gradient["t_axis"]
-    _pre = singular_gradient["preconditioned_grad_norm"]
-    _labels = list(singular_gradient["probe_labels"])
-    _fit_mask = (_t >= 0.01) & (_t <= 0.5)
+def _(np, plt):
+    def build_singular_panel(npz, title_suffix):
+        _t = npz["t_axis"]
+        _pre = npz["preconditioned_grad_norm"]
+        _labels = list(npz["probe_labels"])
+        _fit_mask = (_t >= 0.01) & (_t <= 0.5)
+        _fig, _ax = plt.subplots(figsize=(9.5, 4.4))
+        for _i, _lab in enumerate(_labels):
+            _y = _pre[_i]
+            _mask = _y > 0
+            if (_y[_fit_mask] > 0).all() and len(_y[_fit_mask]) > 2:
+                _slope = float(np.polyfit(np.log(_t[_fit_mask]),
+                                          np.log(_y[_fit_mask]), 1)[0])
+                _slope_str = "flat" if abs(_slope) < 0.05 else f"slope {_slope:+.2f}"
+            else:
+                _slope_str = "n/a"
+            _ax.loglog(_t[_mask], _y[_mask], linewidth=1.6,
+                       label=f"{_lab}  ({_slope_str})")
+        _ax.axvspan(0.01, 0.5, color="#fff4dc", alpha=0.5, zorder=0,
+                    label="divergent regime $b > \\sqrt{\\mathrm{jitter}}$")
+        _ax.set_xlabel("t")
+        _ax.set_ylabel(r"$\lambda(t)^2 \cdot \|(u - a D_t^*) / \sigma^2\|$")
+        _ax.set_title(f"Bounded product: cancellation in close-up ({title_suffix})")
+        _ax.legend(fontsize=8, loc="upper right")
+        _fig.tight_layout()
+        return _fig
 
-    _fig, _ax = plt.subplots(figsize=(9.5, 4.4))
-    for _i, _lab in enumerate(_labels):
-        _y = _pre[_i]
-        _mask = _y > 0
-        if (_y[_fit_mask] > 0).all() and len(_y[_fit_mask]) > 2:
-            _slope = float(np.polyfit(np.log(_t[_fit_mask]),
-                                      np.log(_y[_fit_mask]), 1)[0])
-            _slope_str = "flat" if abs(_slope) < 0.05 else f"slope {_slope:+.2f}"
-        else:
-            _slope_str = "n/a"
-        _ax.loglog(_t[_mask], _y[_mask], linewidth=1.6,
-                   label=f"{_lab}  ({_slope_str})")
-    _ax.axvspan(0.01, 0.5, color="#fff4dc", alpha=0.5, zorder=0,
-                label="divergent regime $b > \\sqrt{\\mathrm{jitter}}$")
-    _ax.set_xlabel("t")
-    _ax.set_ylabel(r"$\lambda(t)^2 \cdot \|(u - a D_t^*) / \sigma^2\|$")
-    _ax.set_title("Bounded product: the cancellation in close-up")
-    _ax.legend(fontsize=8, loc="upper right")
-    _fig.tight_layout()
-    _fig
+    return (build_singular_panel,)
+
+
+@app.cell
+def _(build_singular_panel, singular_gradient):
+    discrete_singular_block = build_singular_panel(
+        singular_gradient, "4 discrete corners"
+    )
+    return (discrete_singular_block,)
+
+
+@app.cell
+def _(build_singular_panel, circle_manifold):
+    circle_singular_block = build_singular_panel(
+        circle_manifold, "uniform on unit circle"
+    )
+    return (circle_singular_block,)
+
+
+@app.cell
+def _(circle_singular_block, discrete_singular_block, mo):
+    mo.ui.tabs({
+        "4 discrete corners": discrete_singular_block,
+        "1D circle in 2D": circle_singular_block,
+    })
     return
 
 
@@ -830,6 +862,104 @@ def _(mo):
     mo.md("""
     [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
     """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md("## 4b. A tiny MLP recovers the same closed form"),
+        mo.callout(
+            mo.md(
+                "A 2-layer 64-hidden tanh MLP, trained from scratch in pure "
+                "numpy ($\\sim$14 s on one CPU), recovers the Wiener matrix "
+                "at the origin to within $\\sim$20% Frobenius error and "
+                "reproduces the noise/velocity stability separation exactly."
+            ),
+            kind="success",
+        ),
+    ])
+    return
+
+
+@app.cell
+def _(np, plt, tiny_mlp):
+    _t_per = tiny_mlp["t_per_t"]
+    _loss_eps = tiny_mlp["loss_curves_eps_per_t"]
+    _loss_v = tiny_mlp["loss_curves_v_per_t"]
+    _rel_e = tiny_mlp["rel_err_eps_per_t"]
+    _rel_v = tiny_mlp["rel_err_v_per_t"]
+
+    _fig, _axes = plt.subplots(1, 2, figsize=(12.5, 4.0))
+
+    _cmap = plt.get_cmap("viridis")
+    _smooth = max(1, _loss_eps.shape[1] // 200)
+    for _i, _t in enumerate(_t_per):
+        _y = _loss_eps[_i].reshape(-1, _smooth).mean(axis=1)
+        _axes[0].semilogy(np.linspace(0, _loss_eps.shape[1], _y.size), _y,
+                          color=_cmap(_i / max(1, len(_t_per) - 1)),
+                          label=f"t={_t:.2f}", linewidth=1.4)
+    _axes[0].set_xlabel("Adam step")
+    _axes[0].set_ylabel("training loss (eps target)")
+    _axes[0].set_title("(a) per-t MLP training loss")
+    _axes[0].legend(fontsize=7, ncol=2, loc="upper right")
+
+    _x = np.arange(len(_t_per))
+    _w = 0.4
+    _axes[1].bar(_x - _w / 2, _rel_e, _w, label="noise (eps)", color="#d96f0a")
+    _axes[1].bar(_x + _w / 2, _rel_v, _w, label="velocity (v)", color="#2a7fb8")
+    _axes[1].set_xticks(_x)
+    _axes[1].set_xticklabels([f"{_t:.2f}" for _t in _t_per])
+    _axes[1].set_xlabel("t")
+    _axes[1].set_ylabel(r"$\|J_{\mathrm{MLP}} - A_{\mathrm{exact}}\|_F / \|A_{\mathrm{exact}}\|_F$")
+    _axes[1].set_title("(b) Jacobian relative error at u=0")
+    _axes[1].legend()
+
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell
+def _(plt, tiny_mlp):
+    _tm = tiny_mlp["t_min_sweep"]
+    _de = tiny_mlp["t_min_sweep_drift_eps"]
+    _dv = tiny_mlp["t_min_sweep_drift_v"]
+
+    _fig, _ax = plt.subplots(figsize=(8.0, 4.4))
+    _ax.semilogx(_tm, _de, "o-", color="#d96f0a", linewidth=1.8,
+                 markersize=8, label=r"noise (eps): gain $|\dot b/b|=1/t$")
+    _ax.semilogx(_tm, _dv, "s-", color="#2a7fb8", linewidth=1.8,
+                 markersize=8, label="velocity (v): gain 1")
+    _ax.set_xlabel(r"$t_{\min}$ of training-time sampler")
+    _ax.set_ylabel(r"drift-weighted error  $|\nu(t)| \cdot \|\hat y - y\|$")
+    _ax.set_title("Stability under sampler-gain weighting")
+    _ax.invert_xaxis()
+    _ax.grid(True, which="both", alpha=0.3)
+    _ax.legend(loc="upper left")
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md(
+            "Drift-weighted error multiplies the per-sample residual by the "
+            "sampler gain $|\\nu(t)|$ that the integrator sees. Velocity gain "
+            "is identically 1 (paper Eq. 70), so its curve stays flat as the "
+            "training window approaches $t = 0$. Noise gain is $|\\dot b / b| "
+            "= 1/t$ under FM linear, so its curve climbs by an order of "
+            "magnitude as $t_{\\min}$ shrinks from 0.5 to 0.005."
+        ),
+        mo.md(
+            "This is the paper's stability theorem visible on a real trained "
+            "model: the divergence lives in the integrator weight, not in "
+            "raw training loss."
+        ),
+        mo.md("[↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)"),
+    ])
     return
 
 
@@ -1172,30 +1302,31 @@ def _(mo):
         mo.md("## 6. Limits"),
         mo.callout(
             mo.md(
-                "**1.** No image-generation experiments. We do not retrain "
-                "DDPM / Flow-Matching U-Nets on CIFAR-10, SVHN, or Fashion-MNIST."
+                "We stay in the closed-form / tractable regime. Image-domain "
+                "experiments are explicitly out of scope; that is what the "
+                "paper does."
             ),
             kind="warn",
         ),
         mo.callout(
             mo.md(
-                "**2.** The exact story assumes linear-Gaussian data; the "
-                "paper's manifold + discrete-set analysis (Appendix E) is not "
-                "implemented here."
+                "Manifold case implemented for the 1D circle in 2D. "
+                "Higher-dimensional manifolds are not."
             ),
             kind="warn",
         ),
         mo.callout(
             mo.md(
-                "**3.** No neural score network. The OLS sanity check fits a "
-                "linear estimator whose closed form is already known."
+                "Trained models are tiny: 2-layer MLPs on $d=2$ data. "
+                "Scaling to high-dimensional data requires compute we do "
+                "not implement."
             ),
             kind="warn",
         ),
         mo.callout(
             mo.md(
-                "**4.** The GRF extension is isotropic only. Anisotropic "
-                "covariances induce mode coupling we did not implement."
+                "GRF extension assumes isotropic covariance. Separable "
+                "anisotropy works trivially; full mode coupling does not."
             ),
             kind="warn",
         ),
@@ -1215,7 +1346,7 @@ def _(mo):
     - **[4]** Wang, R., Du, Y. *Equilibrium Matching: Generative Modeling with Implicit Energy-Based Models.* arXiv:2510.02300, 2025.
     - **[5]** Salimans, T., Ho, J. *Progressive Distillation for Fast Sampling of Diffusion Models.* ICLR 2022.
 
-    Source: `geometry-of-noise-molab/`.  
+    Source: `geometry-of-noise-molab/`.
 
     [↑ Top](#singular-gradients-conformal-flows-and-fourier-shrinkage)
     """)

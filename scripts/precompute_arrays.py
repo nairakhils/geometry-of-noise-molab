@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.exact_affine import (
     E_marg,
+    _circle_centers,
+    conformal_factor_circle,
     denoiser_discrete,
     grad_E_marg_analytic,
     jensen_gap,
@@ -250,6 +252,76 @@ def precompute_singular_gradient() -> None:
     _report("singular_gradient", t0, payload)
 
 
+def precompute_circle_manifold() -> None:
+    """Same per-t curves as precompute_singular_gradient, but the prior is
+    a uniform distribution on a unit circle in R^2 instead of 4 corners.
+
+    Demonstrates that the singular-gradient / conformal-cancellation story
+    extends from a discrete-set prior to a smooth 1D manifold: the integrand
+    still inherits a 1/b(t)^2 blow-up off the manifold, and lambda(t)^2 still
+    matches the b^2 rate, so their product stays bounded.
+    """
+    t0 = time.time()
+    radius = 1.0
+    n_anchors = 256
+    jitter = 1e-6
+    centers = _circle_centers(radius, n_anchors)
+    t_axis = np.logspace(-3.0, np.log10(0.999), 100)
+    u_probe = np.array(
+        [
+            [1.0, 0.0],     # on the circle
+            [0.7, 0.0],     # slightly inside
+            [0.0, 0.0],     # at center
+            [1.3, 0.0],     # slightly outside
+            [3.0, 3.0],     # far outside
+        ],
+        dtype=np.float64,
+    )
+    probe_labels = np.array(
+        [
+            "on circle (1, 0)",
+            "inside (0.7, 0)",
+            "at center (0, 0)",
+            "outside (1.3, 0)",
+            "far outside (3, 3)",
+        ]
+    )
+
+    a_vals = a_of_t(t_axis)
+    b_vals = b_of_t(t_axis)
+    sigma2 = a_vals * a_vals * jitter + b_vals * b_vals
+    lam_t = b_vals + (b_vals * b_vals) / np.where(a_vals > 0, a_vals, np.nan)
+
+    D = denoiser_discrete(u_probe, t_axis, centers, jitter)            # (P, T, d)
+    integrand = (u_probe[:, None, :] - a_vals[None, :, None] * D) / sigma2[None, :, None]
+    raw_grad_norm = np.linalg.norm(integrand, axis=-1)                  # (P, T)
+
+    P = u_probe.shape[0]
+    lambda_bar_curves = np.broadcast_to((lam_t * lam_t)[None, :], (P, len(t_axis))).copy()
+    preconditioned_grad_norm = lambda_bar_curves * raw_grad_norm        # (P, T)
+
+    envelope_inv_b_squared = 1.0 / (b_vals * b_vals)
+    envelope_b_squared = b_vals * b_vals
+
+    payload = dict(
+        centers=centers,
+        radius=np.asarray(radius),
+        n_anchors=np.asarray(n_anchors),
+        jitter=np.asarray(jitter),
+        t_axis=t_axis,
+        u_probe=u_probe,
+        probe_labels=probe_labels,
+        raw_grad_norm=raw_grad_norm,
+        lambda_bar_curves=lambda_bar_curves,
+        preconditioned_grad_norm=preconditioned_grad_norm,
+        envelope_inv_b_squared=envelope_inv_b_squared,
+        envelope_b_squared=envelope_b_squared,
+        lambda_t=lam_t,
+    )
+    np.savez(DATA_DIR / "circle_manifold.npz", **payload)
+    _report("circle_manifold", t0, payload)
+
+
 def precompute_grf_flow_strip(rng: np.random.Generator) -> None:
     """One clean GRF; one shared eps draw used at four forward t values; an
     exact reverse trajectory from t=0.8 down to t=1e-3 with 50 log-spaced
@@ -462,6 +534,7 @@ def main() -> None:
     rng = np.random.default_rng(SEED)
 
     precompute_singular_gradient()
+    precompute_circle_manifold()
     precompute_energy_landscape()
     precompute_stability_curves(np.random.default_rng(SEED + 1))
     precompute_grf_gallery(np.random.default_rng(SEED + 2))

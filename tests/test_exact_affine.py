@@ -7,7 +7,10 @@ from src.exact_affine import (
     build_discrete_Sigma_proxy,
     conditional_mean_eps_given_u_t,
     conditional_mean_x_given_u_t,
+    conformal_factor_circle,
+    conformal_factor_discrete,
     grad_E_marg_analytic,
+    grad_E_marg_circle,
     grad_E_marg_discrete,
     grad_E_marg_numeric,
     grad_E_marg_numeric_discrete,
@@ -169,3 +172,57 @@ def test_grad_E_marg_discrete_matches_central_difference():
         gn = grad_E_marg_numeric_discrete(u, DISCRETE_T_GRID, DISCRETE_PRIOR,
                                           DISCRETE_CENTERS, DISCRETE_JITTER, h=1e-4)
         assert np.allclose(ga, gn, atol=1e-3), f"u={u}: {ga} vs {gn}"
+
+
+# Circle-manifold path
+
+def test_circle_matches_discrete_when_n_anchors_equals_centers():
+    """Wrapper agrees with grad_E_marg_discrete when both use the same 4 anchors.
+
+    This guards the wrapper's correctness against the underlying discrete
+    kernel: grad_E_marg_circle with n_anchors=4 places anchors at theta in
+    {0, pi/2, pi, 3pi/2} on the unit circle, i.e. the four cardinal points.
+    Calling discrete with that same center set must yield identical output.
+    """
+    cardinals = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]])
+    jitter = 1e-6
+    rng = np.random.default_rng(7)
+    for _ in range(5):
+        u = rng.standard_normal(2) * 0.8
+        g_circle = grad_E_marg_circle(
+            u, DISCRETE_T_GRID, DISCRETE_PRIOR,
+            radius=1.0, n_anchors=4, jitter=jitter,
+        )
+        g_disc = grad_E_marg_discrete(
+            u, DISCRETE_T_GRID, DISCRETE_PRIOR, cardinals, jitter,
+        )
+        assert np.allclose(g_circle, g_disc, atol=1e-12), f"u={u}"
+
+        lam_circle = conformal_factor_circle(
+            u, DISCRETE_T_GRID, DISCRETE_PRIOR,
+            radius=1.0, n_anchors=4, jitter=jitter,
+        )
+        lam_disc = conformal_factor_discrete(
+            u, DISCRETE_T_GRID, DISCRETE_PRIOR, cardinals, jitter,
+        )
+        assert np.allclose(lam_circle, lam_disc, atol=1e-12)
+
+
+def test_circle_radial_symmetry_at_origin():
+    """At u=0, by symmetry the integrand averages to 0 on a centered circle.
+
+    A 256-anchor uniform parameterization has the same rotational symmetry,
+    so grad_E_marg_circle(0) should be ~0. The conformal factor at u=0 is
+    finite (independent of u, depends only on the t-posterior).
+    """
+    g = grad_E_marg_circle(
+        np.zeros(2), DISCRETE_T_GRID, DISCRETE_PRIOR,
+        radius=1.0, n_anchors=256, jitter=1e-6,
+    )
+    assert np.linalg.norm(g) < 1e-10, f"|grad at origin| = {np.linalg.norm(g)}"
+
+    lam = conformal_factor_circle(
+        np.zeros(2), DISCRETE_T_GRID, DISCRETE_PRIOR,
+        radius=1.0, n_anchors=256, jitter=1e-6,
+    )
+    assert np.isfinite(lam) and lam > 0.0
